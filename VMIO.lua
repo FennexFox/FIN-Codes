@@ -1,8 +1,8 @@
-VMIO = {}
+VMInterface = {}
 
-function VMIO:New(Identifier, Name)
-    local instance = IOComps:New(Identifier, Name)
-    local base = IOComps:New(Identifier, Name)
+function VMInterface:New(Identifier, Name)
+    local instance = InterfaceComps:New(Identifier, Name)
+    local base = InterfaceComps:New(Identifier, Name)
 
     instance.VeNumSeed = {}
     instance.Vehicle = {}

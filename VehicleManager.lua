@@ -8,24 +8,24 @@ FS.mount("/dev/8BE14772450982E00C7C568BC65FBAE6", "/Library/")
 
 FS.doFile("Library/Conversion.lua")
 FS.doFile("Library/SignControl.lua")
-FS.doFile("Library/IO.lua")
-FS.doFile("Library/VMIO.lua")
+FS.doFile("Library/Interface.lua")
+FS.doFile("Library/VMInterface.lua")
 
 VehicleManagerScanner = component.proxy(component.findComponent("Scanner")[1])
-VehicleManagerIO = component.proxy(component.findComponent("IO")[1])
+VehicleManagerInterface = component.proxy(component.findComponent("Interface")[1])
 VehicleDBManager = component.proxy(component.findComponent("DB Test")[1])
 SignTest = SignControl:Get("SignTest")
 Net = computer.getPCIDevices(findClass("NetworkCard"))[1]
 VehicleDBCash = {}
 
-VMIOcntl = VMIO:New("IO", "Vehicle Manager IO System")
-VMIOcntl:Initialize()
+VMInterfacecntl = VMInterface:New("Interface", "Vehicle Manager Interface System")
+VMInterfacecntl:Initialize()
 
 event.ignoreAll()
 event.listen(VehicleManagerScanner)
-event.listen(VehicleManagerIO)
+event.listen(VehicleManagerInterface)
 event.listen(Net)
-event.listen(VMIOcntl.Comps.Powers.Panel)
+event.listen(VMInterfacecntl.Comps.Powers.Panel)
   Net:open(41) -- VehicleCheck
   Net:open(42) -- VehicleRegister
   Net:open(43) -- VehicleAssign
@@ -94,7 +94,7 @@ function SignalHandler()
     if e == "NetworkMessage" or e == "OnvVehicleEnter" or e == "OnVehicleExit" then
       NetworkComm(e, s, sender, port, data)
     else
-      VMIOcntl:Run(e, s, sender, port, data)
+      VMInterfacecntl:Run(e, s, sender, port, data)
     end
   end
 end

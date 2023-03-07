@@ -1,6 +1,6 @@
-IOComps = {}
+InterfaceComps = {}
 
-function IOComps:New(Identifier, Name)
+function InterfaceComps:New(Identifier, Name)
   local instance = {}
 
   instance.Panel = component.proxy(component.findComponent(Identifier)[1])
@@ -8,7 +8,7 @@ function IOComps:New(Identifier, Name)
   instance.isOn = {Master = false}
   instance.Comps = {}
 
-  function IOComps:Set(Coordinate, CompName)
+  function InterfaceComps:Set(Coordinate, CompName)
     local ioComp = self.Panel:getModule(Coordinate[1], Coordinate[2], Coordinate[3])
     local compPath, i = self.Comps, 1
     local v = CompName[i]
@@ -27,11 +27,11 @@ function IOComps:New(Identifier, Name)
 
     compPath[v] = ioComp
 
-    print(compPath[v].internalName .. " has registered to IO Components of " .. self.PanelName .. " as " .. n)
+    print(compPath[v].internalName .. " has registered to Interface Components of " .. self.PanelName .. " as " .. n)
   end
 
   
-  function IOComps:Get()
+  function InterfaceComps:Get()
     local ioComps = {}
   
     for k, v in pairs(self.Comps) do
@@ -41,7 +41,7 @@ function IOComps:New(Identifier, Name)
     return ioComps
   end
   
-  function IOComps:On()
+  function InterfaceComps:On()
     for k in pairs(self.isOn) do
       self.isOn[k] = true
     end
@@ -49,7 +49,7 @@ function IOComps:New(Identifier, Name)
     print (self.PanelName .. " Turned On")
   end
   
-  function IOComps:Off()
+  function InterfaceComps:Off()
     for k in pairs(self.isOn) do
       self.isOn[k] = false
     end
@@ -57,11 +57,11 @@ function IOComps:New(Identifier, Name)
     print (self.PanelName .. " Turned Off")
   end
   
-  function IOComps:Run()
-    print("Error: IO Control Not Set")
+  function InterfaceComps:Run()
+    print("Error: Interface Control Not Set")
   end
 
-  setmetatable(instance, {__index = IOComps})
+  setmetatable(instance, {__index = InterfaceComps})
 
   return instance
 end
