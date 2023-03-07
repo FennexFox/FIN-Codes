@@ -132,7 +132,25 @@ function LogiStation:New(Freight, isBuffered)
     logiStation.Input = component.proxy(component.findComponent(Freight, "Input"))
   end
 
-  function LogiStation:Standby()
+  function LogiStation:BufferControl(TargetInvQ, Tolerance)
+    local targetMin, targetMax = TargetInvQ - Tolerance, TargetInvQ + Tolerance
+    
+    if self.Inv.itemCount < targetMin then
+      for _, v in pairs(self.Input) do
+        v:transferItem(1)
+      end
+    elseif self.Inv.itemCount > targetMax then
+      for _, v in pairs(self.Output) do
+        v:transferItem(1)
+      end
+    end
+  end
+
+  function LogiStation:Run()
+    
+    if self.Buffer then
+      self:BufferControl()
+    end
   end
 
   return logiStation
