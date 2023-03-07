@@ -123,11 +123,14 @@ function GasStation:New(identifier)
   return gasStation
 end
 
-LogiStation = {}
-
-function LogiStation:New(identifier)
-  local logiStation = Station:New(identifier)
-  local base = Station:New(identifier)
+function LogiStation:New(Freight, isBuffered)
+  local logiStation = Station:New("LogiStation " .. Freight)
+  local base = Station:New(Freight)
+  if isBuffered then
+    logiStation.Buffer = component.proxy(component.findComponent(Freight, "Buffer")[1])
+    logiStation.Output = component.proxy(component.findComponent(Freight, "Output"))
+    logiStation.Input = component.proxy(component.findComponent(Freight, "Input"))
+  end
 
   function LogiStation:Standby()
   end
