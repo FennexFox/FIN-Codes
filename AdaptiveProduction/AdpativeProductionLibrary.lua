@@ -1,17 +1,49 @@
 Input, Outputs = {}, {}
 ProcessSystem = {}
 
+function ProcessSystem:Probing()
+  local errorString, recipeTree, processSystem = nil, {}, {}
+  local factories = component.findComponent(findClass("Manufacturer"))
+
+  if factories[1] == nil then errorString = "Error: No Manufacturer Found"
+  else 
+    for k, v in ipairs(factories) do
+      local recipe = component.proxy(v):getRecipe()
+
+      if recipeTree[recipe.Name] == nil then
+        recipeTree[recipe.Name] = {Duration = recipe.Duration, Input = {}, Output = {}, prev = {}, next = {}}
+      end
+    end
+
+    for k, v in recipeTree do
+      local ingredients, products = v:getIngredients(), v:getProducts()
+      for a, i in ingredients do
+        recipeTree[k][Input][a] = {Name = i.Type.Name, Amount = i.Amount}
+      end
+      for b, p in products do
+        recipeTree[k][Output][b] = {Name = p.Type.Name, Amount = p.Amount}
+      end
+
+    end
+
+  end
+
+
+
+  if errorString == nil then
+    return processSystem
+  else
+    print(errorString)
+  end
+
+
+end
 function Input:New(Nick)
-  local inputSytem = {}
-  
+
 end
 
 function Outputs:New(Nick)
   
-end
-
-function ProcessSystem:Probing()
-
 end
 
 --[[
