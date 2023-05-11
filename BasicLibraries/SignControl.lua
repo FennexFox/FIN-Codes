@@ -1,9 +1,11 @@
+-- Dependent on Conversion
+
 SignControl = {}
 ColorPreset = {
   Ficsit = {Primary = "FA9549", Secondary = "5F668C", Background = "583113"},
   Traffic = {R = "FF0000", Y = "FFCC00", G= "009900"},
   Basic = {White = "FFFFFF", Black = "000000"}
-}
+} -- this might be separated into its own "library" or be merged into member field of SignControl. Let me see.
 
 function SignControl:Get (Identifier)
   local signProxy = component.proxy(component.findComponent(Identifier)[1])
@@ -31,6 +33,8 @@ function SignControl:SetColorPreset (ColorLayerPair)
     self[2][k] = Conversion.RGBA.ImportHex(v)
   end
 end
+
+--[[ Below here might be excluded from "the basic library"
 
 function SignControl:SetStandby ()
   self[2]:setTextElement("Name", "Standby")
@@ -67,3 +71,4 @@ function SignControl:SetAllGreen ()
   SignControl:SetColorPreset(clp)
 end
 
+]]--
