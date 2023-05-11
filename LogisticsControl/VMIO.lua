@@ -1,3 +1,5 @@
+-- dependent on IO
+
 VMInterface = {}
 
 function VMInterface:New(Identifier, Name)
