@@ -1,76 +1,169 @@
-Input, Outputs = {}, {}
 ProcessSystem = {}
 
-function ProcessSystem:Probing()
-  local errorString, recipeTree, processSystem = nil, {}, {}
-  local factories = component.findComponent(findClass("Manufacturer"))
+function ProcessSystem:New()
+    local instance = {}
 
-  if factories[1] == nil then errorString = "Error: No Manufacturer Found"
-  else 
-    for k, v in ipairs(factories) do
-      local recipe = component.proxy(v):getRecipe()
+    local errorString, recipeTree = "", {}
+    local factories = component.findComponent(findClass("Manufacturer"))
 
-      if recipeTree[recipe.Name] == nil then
-        recipeTree[recipe.Name] = {Duration = recipe.Duration, Input = {}, Output = {}, prev = {}, next = {}}
-      end
+    function ProcessSystem:Initialize()
+        if factories[1] == nil then errorString = "Error: No Manufacturer Found"
+        else 
+            recipeTree = ProcessSystem:Probe(factories, recipeTree)
+            recipeTree = ProcessSystem:Cache(recipeTree)
+            recipeTree = ProcessSystem:Link(recipeTree)
+
+            -- ProcessSystem:Print(recipeTree)
+        end
+        if errorString == "" then return recipeTree else print(errorString) end
     end
 
-    for k, v in recipeTree do
-      local ingredients, products = v:getIngredients(), v:getProducts()
-      for a, i in ingredients do
-        recipeTree[k][Input][a] = {Name = i.Type.Name, Amount = i.Amount}
-      end
-      for b, p in products do
-        recipeTree[k][Output][b] = {Name = p.Type.Name, Amount = p.Amount}
-      end
+    function ProcessSystem:KeyGenerator(recipeName)
+        local key = string.gsub(recipeName, "Alternate: ", "A_")
+        key = string.gsub(key, " ", "")
+        return key
+    end
+
+    function ProcessSystem:Probe(factories, recipeTree) -- iterate all machines in the network to get reciepes
+        for k, v in ipairs(factories) do
+            local recipe = component.proxy(v):getRecipe()
+            local key = self:KeyGenerator(recipe.Name)
+            if recipeTree[key] == nil then
+                recipeTree[key] = {Name = recipe.Name, Duration = recipe.Duration, temp = {is = recipe:getIngredients(), ps = recipe:getProducts()}}
+            end
+        end
+
+        recipeTree.Input = {Name = "Input", Duration = 0, Inflows = {From = {}}, Outflows = {To = {}}}
+        recipeTree.Output = {Name = "Output", Duration = 0, Inflows = {From = {}}, Outflows = {To = {}}}
+        
+    
+        return recipeTree
+    
+    end
+
+    function ProcessSystem:Cache(recipeTree)
+        for _, v in pairs(recipeTree) do -- cacheing recipe data
+            v.Inflows, v.Outflows = {}, {}
+            if v.temp then
+                for _, i in pairs(v.temp.is) do
+                    local key = self:KeyGenerator(i.Type.Name)
+                    v.Inflows[key] = {Name = i.Type.Name, DPS_s = i.Amount/v.Duration, From = {}}
+                    v.Inflows[key].From[0] = v.Input
+                end
+                for _, p in pairs(v.temp.ps) do
+                    local key = self:KeyGenerator(p.Type.Name)
+                    v.Outflows[key] = {Name = p.Type.Name, SPS_s = p.Amount/v.Duration, To = {}}
+                    v.Outflows[key].To[0] = v.Output
+                end   
+                v.temp = nil
+            end
+        end
+    
+        return recipeTree
+    
+    end
+    
+    function ProcessSystem:Link(recipeTree) -- linking recipeTree[k] with matching ingredients and products
+        local InflowLinks = {}
+        local OutflowLinks = {}
+    
+        for _, v in pairs(recipeTree) do
+            for _, w in pairs(recipeTree) do
+                for _, vOutflow in pairs(v.Outflows) do
+                    for _, wInflow in pairs(w.Inflows) do
+                        if vOutflow.Name == wInflow.Name then
+                            if InflowLinks[wInflow.Name] == nil then
+                                table.insert(wInflow.From, v)
+                                InflowLinks[wInflow.Name] = true
+                            end
+                            if OutflowLinks[vOutflow.Name] == nil then
+                                table.insert(vOutflow.To, w)
+                                OutflowLinks[vOutflow.Name] = true
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        for _, v in pairs(recipeTree) do
+            for _, inflow in pairs(v.Inflows) do
+                if InflowLinks[inflow.Name] then else inflow.From = recipeTree.Input end
+            end
+            for _, outflow in pairs(v.Outflows) do
+                if OutflowLinks[outflow.Name] then else outflow.To = recipeTree.Output end
+            end
+        end
+    
+        return recipeTree
 
     end
 
-  end
+    function ProcessSystem:Print(recipeTree)
+        for k, v in pairs(recipeTree) do
+            local iString, iString1, pString, pString1
+            if v.Inflows then
+                for _, vInflow in pairs(v.Inflows) do
+                  iString1 = vInflow.Name .. " * " .. vInflow.DPS_s
+                  if not vInflow.Name == "Input" then iString1 = "(" .. iString1 .. ") by" .. vInflow.From[1].Name end
+                  if iString then iString = iString .. " and " .. iString1 else iString = iString1 end
+                end
+            end
+            if v.Outflows then 
+                for _, vOutflow in pairs(v.Outflows) do
+                  pString1 = vOutflow.Name .. " * " .. vOutflow.SPS_s
+                  if not vOutflow.Name == "Output" then pString1 = "(" .. pString1 .. ") by" .. vOutflow.To[1].Name end
+                  if pString then pString = pString .. " and " .. pString1 else pString = pString1 end
+                end
+            end
 
+            print(k, ": from ", iString, " to ", pString)
 
+        end
+    end
 
-  if errorString == nil then
-    return processSystem
-  else
-    print(errorString)
-  end
-
+    setmetatable(instance, {__index = ProcessSystem})
+    return instance
 
 end
-function Input:New(Nick)
 
-end
+what = ProcessSystem:New()
+what:Initialize()
 
-function Outputs:New(Nick)
-  
-end
 
 --[[
-TestConst = component.proxy(component.findComponent("TestConst"))
-TestComp = component.proxy(component.findComponent("TestComp"))[1]
-
-print(TestComp:getType()["Name"])
-
-for k, v in pairs(TestConst) do
-  print(k .. ": " .. v:getType()["Name"] .. " / " .. v:getRecipe():getProducts()[1].Type.Name .. " * " .. v:getRecipe():getProducts()[1].Amount .. " / " ..  v:getRecipe():getIngredients()[1].Type.Name .. " * " .. v:getRecipe():getProducts()[1].Amount .. " @ " .. v:getRecipe().Duration .. "s")
+for _, v in pairs(recipeTree) do
+    keyv = self:KeyGenerator(v.Name)
+    for _, inflow in pairs(v.Inflows) do
+        for _, from in pairs(inflow.From) do
+            if type(from) == "number" then print(keyv .. " makes number") else
+            keyx = ProcessSystem:KeyGenerator(tostring(from.Name))
+            print("from " .. keyx)
+            end
+        end
+    end
 end
 
-TestClass = TestConst[1].getType()
 
-Test = component.proxy(component.findComponent(findClass(TestClass["Name"]))
-
-print(Test)
-
-for k, v in pairs(Test) do
-  print(k .. ": " .. v:getRecipe().Duration .. "s")
-end
-
-↓
-Computer_C
-1: Build_ManufacturerMk1_C / High-Speed Connector * 1 / Quickwire * 1 @ 16.0s
-2: Build_ConstructorMk1_C / Iron Plate * 2 / Iron Ingot * 2 @ 6.0s
-table: 0000024A265D5C80
-1: 16.0s
-2: 12.0s
---]]
+from IronPlate
+from nil
+from nil
+from nil
+A_CoatedIronCanister makes number
+from nil
+from nil
+from nil
+A_AutomatedMiner makes number
+from nil
+from nil
+from nil
+A_AutomatedMiner makes number
+from nil
+from nil
+from nil
+A_AutomatedMiner makes number
+from nil
+from nil
+from nil
+IronPlate makes number
+]]--
