@@ -1,6 +1,5 @@
 String = {}
 
-String = {}
 function String.addLine(string, line)
     if string == {} then string = line else string = string .. "\n" .. line end
     return string
