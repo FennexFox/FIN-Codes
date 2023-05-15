@@ -40,7 +40,9 @@ function RecipeTree:New()
     function RecipeTree:Cache(machineProxies)
         for _, v in ipairs(machineProxies) do
             local status, recipeInstance = pcall(v.getRecipe, v)
-            if not status then print("Error: " .. v.internalName .. " has no Recipe!") return nil else self:NewRecipeNode(recipeInstance) end
+            if not status then print("Error: " .. v.internalName .. " has no Recipe!") return nil
+            else self:NewRecipeNode(recipeInstance)
+            end
         end
 
         print("RecipeNode Cacheing Complete") return true
