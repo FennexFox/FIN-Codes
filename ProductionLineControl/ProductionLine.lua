@@ -161,12 +161,37 @@ end
 function ProductionNode:New()
     local instance = {}
 
+    function ProductionNode:NewNode()
+    end
+
+    function ProductionNode:SetNode()
+    end
+
+    function ProductionNode:LinkNode()
+    end
+
     setmetatable(instance, {__index = self})
     return instance
 end
 
 function ProductionChain:New()
     local instance = {}
+    function ProductionChain:NewNode(rkey)
+        self[rkey] = {Prev = {}, Next = {}}
+    end
+
+    function ProductionChain:SetNode(recipeTree, rkey)
+        for ikeyIn, _ in pairs(recipeTree[rkey].Ingredients) do
+            self[rkey].Prev[ikeyIn] = {}
+        end
+        for ikeyOut, _ in pairs(recipeTree[rkey].Products) do
+            self[rkey].Next[ikeyOut] = {}
+        end
+    end
+
+    function ProductionChain:LinkNode()
+                
+    end
 
     setmetatable(instance, {__index = self})
     return instance
@@ -175,12 +200,38 @@ end
 function FlowTree:New()
     local instance = {}
 
+    function FlowTree:NewNode(rkey)
+        self[rkey] = {Inflows = {}, Outflows = {}} 
+    end
+
+    function FlowTree:SetNode(productionNode, recipeNode, throughputNode, clock)
+        local iName, iAmount = throughputNode.Name, throughputNode.Amount
+        local ikey, rkey, fkey = String.KeyGenerator(iName), String.KeyGenerator(recipeNode.Name), ""
+        
+        if throughputNode.isIngredient then fkey = "Inflows" else fkey = "Outflows" end
+
+        self[rkey][fkey][ikey] = {Name = iName, TPM_s = iAmount / recipeNode.Duration, TPM_a = iAmount / recipeNode.Duration * clock, ProductionNode = productionNode[rkey]}
+    end
+
+    function FlowTree:LinkNode()
+        
+    end
+
     setmetatable(instance, {__index = self})
     return instance
 end
 
 function Terminal:New()
-    local instance = {}
+    local instance = {Inbound = {}, Outbound = {}}
+
+    function Terminal:SetNode(ikey, isInbound) -- Terminal class is a placeholder
+        if isInbound then isInbound = "Inbound" else isInbound = "Outbound" end
+        self[isInbound][ikey] = {Recipe = {Name = isInbound .. " Terminal"}}
+        return self[isInbound][ikey]
+    end
+
+    function Terminal:LinkNode()
+    end
 
     setmetatable(instance, {__index = self})
     return instance
