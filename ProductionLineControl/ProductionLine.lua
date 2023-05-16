@@ -41,15 +41,19 @@ function ProductionLine:New()
         print(counter .. " Production Nodes found, cacheing Recipe Nodes")
         recipeTree:Cache(mP_trim)
 
-        for rkey, _ in pairs(ProductionNode) do
+        for rkey, v in pairs(ProductionNode) do
             if not recipeTree[rkey] then print("Error: RecipeTree has not cached, abort linking!") return nil
             else
-            local ingredients, products = recipeTree[rkey].Recipe:getIngredients(), recipeTree[rkey].Recipe:getProducts()
-                for _, i in ipairs(ingredients) do
-                    ProductionLine:FlowNodeSet(i, recipeTree[rkey], true, 1)
+                local recipeNode = recipeTree[rkey]
+
+                v.Recipe = recipeNode
+                ProductionLine:ChainSet(rkey)
+
+                for _, i in pairs(recipeNode.Ingredients) do
+                    ProductionLine:FlowNodeSet(i, recipeNode, true, 1)
                 end
-                for _, p in ipairs(products) do
-                    ProductionLine:FlowNodeSet(p, recipeTree[rkey], nil, 1)
+                for _, p in pairs(recipeNode.Products) do
+                    ProductionLine:FlowNodeSet(p, recipeNode, nil, 1)
                 end
             end
         end
@@ -58,34 +62,26 @@ function ProductionLine:New()
     end
 
     function ProductionLine:NodeLink()
-        for rkey1, v in pairs(ProductionNode) do
-            for rkey2, w in pairs(ProductionNode) do
-                local inflows, outflows = {}, {}
-                if FlowTree[rkey1].Inflow and FlowTree[rkey2].Outflow then
-                    inflows = FlowTree[rkey1].Inflow
-                    outflows = FlowTree[rkey2].Outflow
-                elseif FlowTree[rkey1].Outflow and FlowTree[rkey2].Inflow then
-                    outflows = FlowTree[rkey1].Outflow
-                    inflows = FlowTree[rkey2].Inflow
-                else break
-                end
-                for ikey1, inflow in pairs(inflows) do
-                    for ikey2, outflow in pairs(outflows) do
-                        if inflow.Name == outflow.Name then
-                            ProductionChain[rkey1].Prev[ikey1] = ProductionNode[rkey2]
-                            ProductionChain[rkey2].Next[ikey2] = ProductionNode[rkey1]
+        for rkeyPrev, nodePrev in pairs(ProductionNode) do
+            for rkeyThis, _ in pairs(ProductionNode) do
+                for ikeyPush, flowPush in pairs(FlowTree[rkeyPrev].Outflows) do
+                    for ikeyPull, flowPull in pairs(FlowTree[rkeyThis].Inflows) do
+                        if flowPush.Name == flowPull.Name then -- I know, ikeyPush and ikeyPull are same, but I do this for easy understanding
+                            ProductionChain[rkeyPrev].Next[ikeyPush] = ProductionNode[rkeyThis]
+                            ProductionChain[rkeyThis].Prev[ikeyPull] = ProductionNode[rkeyPrev]
                         end
                     end
                 end
             end
+            nodePrev.Link = ProductionChain[rkeyPrev]
         end
 
         for _, v in pairs(ProductionChain) do
             for ikey, w in pairs(v.Prev) do
-                if #w == 0 then w = ProductionLine:TerminalNew(ikey, true) end
+                if not w.Machines then v.Prev[ikey] = ProductionLine:TerminalSet(ikey, true) end
             end
             for ikey, w in pairs(v.Next) do
-                if #w == 0 then w = ProductionLine:TerminalNew(ikey, nil) end
+                if not w.Machines then v.Next[ikey] = ProductionLine:TerminalSet(ikey, nil) end
             end
         end
 
@@ -98,7 +94,7 @@ function ProductionLine:New()
         if not ProductionNode[rkey] then print(recipeInstance.Name .. " is newly added")
             ProductionLine:ChainNew(rkey)
             ProductionLine:FlowNodeNew(rkey)
-            ProductionNode[rkey] = {Machines = {machineProxy}, Clock = 1, Link = ProductionChain[rkey], Flow = FlowTree[rkey], Recipe = {}} -- recipeTree is not yet chached
+            ProductionNode[rkey] = {Machines = {machineProxy}, Clock = 1, Link = {}, Flow = FlowTree[rkey], Recipe = {}} -- recipeTree is not yet chached
         else print(recipeInstance.Name .. " already cached")
             table.insert(ProductionNode[rkey].Machines, machineProxy)
             mP_trim = nil
@@ -111,40 +107,52 @@ function ProductionLine:New()
         ProductionChain[rkey] = {Prev = {}, Next = {}}
     end
 
-    function ProductionLine:FlowNodeNew(rkey)
-        FlowTree[rkey] = {Inflow = {}, Outflow = {}}
+    function ProductionLine:ChainSet(rkey)
+        for ikeyIn, _ in pairs(recipeTree[rkey].Ingredients) do
+            ProductionChain[rkey].Prev[ikeyIn] = {}
+        end
+        for ikeyOut, _ in pairs(recipeTree[rkey].Products) do
+            ProductionChain[rkey].Next[ikeyOut] = {}
+        end
     end
 
-    function ProductionLine:FlowNodeSet(itemAmount, recipeNode, isInflow, clock)
-        local iName, iAmount = itemAmount.Type.Name, itemAmount.Amount
+    function ProductionLine:FlowNodeNew(rkey)
+        FlowTree[rkey] = {Inflows = {}, Outflows = {}}
+    end
+
+    function ProductionLine:FlowNodeSet(throughputNode, recipeNode, isInflow, clock)
+        local iName, iAmount = throughputNode.Name, throughputNode.Amount
         local ikey, rkey = String.KeyGenerator(iName), String.KeyGenerator(recipeNode.Name)
         
-        if isInflow then isInflow = "Inflow" else isInflow = "Outflow" end
+        if isInflow then isInflow = "Inflows" else isInflow = "Outflows" end
 
-        FlowTree[rkey][isInflow][ikey] = {Name = iName, TPM_s = iAmount / recipeNode.Duration, TPM_a = iAmount / recipeNode.Duration * clock}
+        FlowTree[rkey][isInflow][ikey] = {Name = iName, TPM_s = iAmount / recipeNode.Duration, TPM_a = iAmount / recipeNode.Duration * clock, ProductionNode = ProductionNode[rkey]}
     end
 
-    function ProductionLine:FlowNodePrint()
-       for rkey, v in pairs(ProductionNode) do print(rkey)
-         print("Product Node " .. rkey .. " is next to:")
-         if FlowTree[rkey].Inflow then
-           for _, w in pairs(FlowTree[rkey].Inflow) do
-             print(w.Name)
-           end
+    function ProductionLine:ChainPrint()
+       print("\n * Printing Production Chain")
+       for rkey, node in pairs(ProductionNode) do
+         print("ProductNode " .. rkey .. " is after:")
+         local isTerminal = true
+         for ikey, v in pairs(node.Link.Prev) do
+           print(v.Recipe.Name)
+           isTerminal = false
          end
-         print("Product Node " .. rkey .. " is before:")
-         if FlowTree[rkey].Outflow then
-           for _, x in pairs(FlowTree[rkey].Outflow) do
-             print(x.Name)
-           end
+         if isTerminal then print("Inbound Terminal") isTerminal = true end
+
+         print("ProductNode " .. rkey .. " is before:")
+         for _, w in pairs(node.Link.Next) do
+           print(w.Recipe.Name)
+           isTerminal = false
          end
+         if isTerminal then print("Outbound Terminal") end
        end
     end
  
-    function ProductionLine:TerminalNew(ikey, isInbound)
+    function ProductionLine:TerminalSet(ikey, isInbound) -- Terminal class is a placeholder
         if isInbound then isInbound = "Inbound" else isInbound = "Outbound" end
-
-        Terminal[isInbound][ikey] = {}
+        Terminal[isInbound][ikey] = {Recipe = {Name = isInbound}}
+        return Terminal[isInbound][ikey]
     end
 
     setmetatable(instance, {__index = ProductionLine})
