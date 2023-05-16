@@ -52,6 +52,6 @@ function RecipeTree:New()
         print("RecipeNode Cacheing Complete") return true
     end
 
-    setmetatable(instance, {__index = RecipeTree})
+    setmetatable(instance, {__index = self})
     return instance
 end

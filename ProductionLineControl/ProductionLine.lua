@@ -1,11 +1,11 @@
 -- dependent on RecipeTree
 -- dependent on String
 
-ProductionLine = {}
+ProductionLine, ProductionNode, ProductionChain, FlowTree, Terminal = {}, {}, {}, {}, {}
 
 function ProductionLine:New(doInitialize, doPrint)
     local instance = {}
-    local ProductionNode, ProductionChain, FlowTree, Terminal = {}, {}, {}, {Inbound = {}, Outbound = {}} -- these are private fields
+    local productionNode, productionChain, flowTree, terminal = {}, {}, {}, {} -- these are private fields
     local recipeTree = RecipeTree:New() -- This is a clone of RecipeTree from Central DB
 
     function ProductionLine:Initialize()
@@ -41,7 +41,7 @@ function ProductionLine:New(doInitialize, doPrint)
         print(counter .. " Production Nodes found, cacheing Recipe Nodes")
         recipeTree:Cache(mP_trim)
 
-        for rkey, v in pairs(ProductionNode) do
+        for rkey, v in pairs(productionNode) do
             if not recipeTree[rkey] then error("RecipeTree has not cached, abort linking!")
             else
                 local recipeNode = recipeTree[rkey]
@@ -62,21 +62,21 @@ function ProductionLine:New(doInitialize, doPrint)
     end
 
     function ProductionLine:NodeLink()
-        for rkeyPrev, nodePrev in pairs(ProductionNode) do
-            for rkeyThis, _ in pairs(ProductionNode) do
-                for ikeyPush, flowPush in pairs(FlowTree[rkeyPrev].Outflows) do
-                    for ikeyPull, flowPull in pairs(FlowTree[rkeyThis].Inflows) do
+        for rkeyPrev, nodePrev in pairs(productionNode) do
+            for rkeyThis, _ in pairs(productionNode) do
+                for ikeyPush, flowPush in pairs(flowTree[rkeyPrev].Outflows) do
+                    for ikeyPull, flowPull in pairs(flowTree[rkeyThis].Inflows) do
                         if flowPush.Name == flowPull.Name then -- I know, ikeyPush and ikeyPull are same, but I do this for easy understanding
-                            ProductionChain[rkeyPrev].Next[ikeyPush] = ProductionNode[rkeyThis]
-                            ProductionChain[rkeyThis].Prev[ikeyPull] = ProductionNode[rkeyPrev]
+                            productionChain[rkeyPrev].Next[ikeyPush] = productionNode[rkeyThis]
+                            productionChain[rkeyThis].Prev[ikeyPull] = productionNode[rkeyPrev]
                         end
                     end
                 end
             end
-            nodePrev.Link = ProductionChain[rkeyPrev]
+            nodePrev.Link = productionChain[rkeyPrev]
         end
 
-        for _, v in pairs(ProductionChain) do
+        for _, v in pairs(productionChain) do
             for ikey, w in pairs(v.Prev) do
                 if not w.Machines then v.Prev[ikey] = ProductionLine:TerminalSet(ikey, true) end
             end
@@ -91,12 +91,12 @@ function ProductionLine:New(doInitialize, doPrint)
     function ProductionLine:NodeNew(machineProxy, recipeInstance)
         local mP_trim, rkey = machineProxy, String.KeyGenerator(recipeInstance.Name)
 
-        if not ProductionNode[rkey] then print(recipeInstance.Name .. " is newly added")
+        if not productionNode[rkey] then print(recipeInstance.Name .. " is newly added")
             ProductionLine:ChainNew(rkey)
             ProductionLine:FlowNodeNew(rkey)
-            ProductionNode[rkey] = {Machines = {machineProxy}, Clock = 1, Link = {}, Flow = FlowTree[rkey], Recipe = {}} -- recipeTree is not yet chached
+            productionNode[rkey] = {Machines = {machineProxy}, Clock = 1, Link = {}, Flow = flowTree[rkey], Recipe = {}} -- recipeTree is not yet chached
         else print(recipeInstance.Name .. " already cached")
-            table.insert(ProductionNode[rkey].Machines, machineProxy)
+            table.insert(productionNode[rkey].Machines, machineProxy)
             mP_trim = nil
         end
 
@@ -104,20 +104,20 @@ function ProductionLine:New(doInitialize, doPrint)
     end
 
     function ProductionLine:ChainNew(rkey)
-        ProductionChain[rkey] = {Prev = {}, Next = {}}
+        productionChain[rkey] = {Prev = {}, Next = {}}
     end
 
     function ProductionLine:ChainSet(rkey)
         for ikeyIn, _ in pairs(recipeTree[rkey].Ingredients) do
-            ProductionChain[rkey].Prev[ikeyIn] = {}
+            productionChain[rkey].Prev[ikeyIn] = {}
         end
         for ikeyOut, _ in pairs(recipeTree[rkey].Products) do
-            ProductionChain[rkey].Next[ikeyOut] = {}
+            productionChain[rkey].Next[ikeyOut] = {}
         end
     end
 
     function ProductionLine:FlowNodeNew(rkey)
-        FlowTree[rkey] = {Inflows = {}, Outflows = {}}
+        flowTree[rkey] = {Inflows = {}, Outflows = {}}
     end
 
     function ProductionLine:FlowNodeSet(throughputNode, recipeNode, isInflow, clock)
@@ -126,12 +126,12 @@ function ProductionLine:New(doInitialize, doPrint)
         
         if isInflow then isInflow = "Inflows" else isInflow = "Outflows" end
 
-        FlowTree[rkey][isInflow][ikey] = {Name = iName, TPM_s = iAmount / recipeNode.Duration, TPM_a = iAmount / recipeNode.Duration * clock, ProductionNode = ProductionNode[rkey]}
+        flowTree[rkey][isInflow][ikey] = {Name = iName, TPM_s = iAmount / recipeNode.Duration, TPM_a = iAmount / recipeNode.Duration * clock, ProductionNode = productionNode[rkey]}
     end
 
     function ProductionLine:ChainPrint()
        print("\n * Printing Production Chain")
-       for rkey, node in pairs(ProductionNode) do
+       for rkey, node in pairs(productionNode) do
 
          print("ProductNode " .. rkey .. " is after:")
          for _, v in pairs(node.Link.Prev) do
@@ -148,12 +148,40 @@ function ProductionLine:New(doInitialize, doPrint)
  
     function ProductionLine:TerminalSet(ikey, isInbound) -- Terminal class is a placeholder
         if isInbound then isInbound = "Inbound" else isInbound = "Outbound" end
-        Terminal[isInbound][ikey] = {Recipe = {Name = isInbound .. " Terminal"}}
-        return Terminal[isInbound][ikey]
+        terminal[isInbound][ikey] = {Recipe = {Name = isInbound .. " Terminal"}}
+        return terminal[isInbound][ikey]
     end
 
-    setmetatable(instance, {__index = ProductionLine})
+    setmetatable(instance, {__index = self})
     if doInitialize then instance:Initialize() end
     if doPrint then instance:ChainPrint() end
+    return instance
+end
+
+function ProductionNode:New()
+    local instance = {}
+
+    setmetatable(instance, {__index = self})
+    return instance
+end
+
+function ProductionChain:New()
+    local instance = {}
+
+    setmetatable(instance, {__index = self})
+    return instance
+end
+
+function FlowTree:New()
+    local instance = {}
+
+    setmetatable(instance, {__index = self})
+    return instance
+end
+
+function Terminal:New()
+    local instance = {}
+
+    setmetatable(instance, {__index = self})
     return instance
 end

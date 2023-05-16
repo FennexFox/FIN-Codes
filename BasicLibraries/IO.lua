@@ -61,7 +61,7 @@ function InterfaceComps:New(Identifier, Name)
     print("Error: Interface Control Not Set")
   end
 
-  setmetatable(instance, {__index = InterfaceComps})
+  setmetatable(instance, {__index = self})
 
   return instance
 end
