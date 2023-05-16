@@ -3,7 +3,7 @@
 
 ProductionLine = {}
 
-function ProductionLine:New()
+function ProductionLine:New(doInitialize, doPrint)
     local instance = {}
     local ProductionNode, ProductionChain, FlowTree, Terminal = {}, {}, {}, {Inbound = {}, Outbound = {}} -- these are private fields
     local recipeTree = RecipeTree:New() -- This is a clone of RecipeTree from Central DB
@@ -12,13 +12,13 @@ function ProductionLine:New()
         --recipeTree = ProductionLine:GetRecipeTree()
         local machineIDs = component.findComponent(findClass("Manufacturer"))
 
-        if machineIDs[1] == nil then
-            print("Error: No Manufacturer Found!") return nil
+        if #machineIDs == 0 then
+            error("No Manufacturer Found!")
         else
             print(#machineIDs .. " Manufacturers found, Cacheing Production Nodes")
-            if not ProductionLine:NodeCache(machineIDs) then print("Error: Production Node not Cached!") return nil
+            if not ProductionLine:NodeCache(machineIDs) then error("Production Node not Cached!")
             else print("Linking Production Nodes to draw Production Chain")
-                if not ProductionLine:NodeLink() then print("Error: Production Nodes not Linked!") return nil
+                if not ProductionLine:NodeLink() then error("Production Nodes not Linked!")
                 else print("Production Line Initialized")
                 end
             end
@@ -31,7 +31,7 @@ function ProductionLine:New()
 
         for _, v in pairs(machineProxies) do
             local status, recipeInstance = pcall(v.getRecipe, v)
-            if not status then print("Error: " .. v.internalName .. " has no Recipe!") return nil
+            if not status then error(v.internalName .. " has no Recipe!")
             else 
                 table.insert(mP_trim, ProductionLine:NodeNew(v, recipeInstance))
                 counter = counter + 1
@@ -42,7 +42,7 @@ function ProductionLine:New()
         recipeTree:Cache(mP_trim)
 
         for rkey, v in pairs(ProductionNode) do
-            if not recipeTree[rkey] then print("Error: RecipeTree has not cached, abort linking!") return nil
+            if not recipeTree[rkey] then error("RecipeTree has not cached, abort linking!")
             else
                 local recipeNode = recipeTree[rkey]
 
@@ -132,29 +132,28 @@ function ProductionLine:New()
     function ProductionLine:ChainPrint()
        print("\n * Printing Production Chain")
        for rkey, node in pairs(ProductionNode) do
+
          print("ProductNode " .. rkey .. " is after:")
-         local isTerminal = true
-         for ikey, v in pairs(node.Link.Prev) do
-           print(v.Recipe.Name)
-           isTerminal = false
+         for _, v in pairs(node.Link.Prev) do
+           print("- " .. v.Recipe.Name)
          end
-         if isTerminal then print("Inbound Terminal") isTerminal = true end
 
          print("ProductNode " .. rkey .. " is before:")
          for _, w in pairs(node.Link.Next) do
-           print(w.Recipe.Name)
-           isTerminal = false
+           print("- " .. w.Recipe.Name)
          end
-         if isTerminal then print("Outbound Terminal") end
+
        end
     end
  
     function ProductionLine:TerminalSet(ikey, isInbound) -- Terminal class is a placeholder
         if isInbound then isInbound = "Inbound" else isInbound = "Outbound" end
-        Terminal[isInbound][ikey] = {Recipe = {Name = isInbound}}
+        Terminal[isInbound][ikey] = {Recipe = {Name = isInbound .. " Terminal"}}
         return Terminal[isInbound][ikey]
     end
 
     setmetatable(instance, {__index = ProductionLine})
+    if doInitialize then instance:Initialize() end
+    if doPrint then instance:ChainPrint() end
     return instance
 end

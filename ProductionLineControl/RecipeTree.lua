@@ -19,8 +19,8 @@ function RecipeTree:New()
         local status, rkey = pcall(String.KeyGenerator, recipe.Name)
         local iCounter, pCounter = 0, 0
 
-        if not status then print("Error: Cannot find Name of the Recipe!") return nil
-        elseif self[rkey] then print(recipe.Name .. " already listed; abort adding RecipeNode") return nil
+        if not status then error("Cannot find Name of the Recipe!")
+        elseif self[rkey] then error(recipe.Name .. " already listed; abort adding RecipeNode")
         else
             self[rkey] = {Name = recipe.Name, Duration = recipe.Duration, Ingredients = {}, Products = {}, Recipe = recipe}
             print(recipe.Name .. " detected; cacheing ingredients and products")
@@ -44,7 +44,7 @@ function RecipeTree:New()
     function RecipeTree:Cache(machineProxies)
         for _, v in ipairs(machineProxies) do
             local status, recipeInstance = pcall(v.getRecipe, v)
-            if not status then print("Error: " .. v.internalName .. " has no Recipe!") return nil
+            if not status then error(v.internalName .. " has no Recipe!")
             else self:NewRecipeNode(recipeInstance)
             end
         end
