@@ -26,7 +26,7 @@ function ProductionLine:New()
     end
 
     function ProductionLine:NodeCache(machineIDs)
-        local mP_trim = {}
+        local mP_trim, counter = {}, 0
         local machineProxies = component.proxy(machineIDs)
 
         for _, v in machineProxies do
@@ -34,10 +34,11 @@ function ProductionLine:New()
             if not status then print("Error: " .. v.internalName .. " has no Recipe!") return nil
             else
                 table.insert(mP_trim, ProductionLine:NodeNew(v, recipeInstance))
+                counter = counter + 1
             end
         end
 
-        print(#ProductionNode .. " Production Nodes found, cacheing Recipe Nodes")
+        print(counter .. " Production Nodes found, cacheing Recipe Nodes")
         recipeTree:Cache(mP_trim)
 
         for rkey, _ in pairs(ProductionNode) do

@@ -17,23 +17,27 @@ function RecipeTree:New()
     function RecipeTree:NewRecipeNode(recipeInstance)
         local recipe = recipeInstance
         local status, rkey = pcall(String.KeyGenerator, recipe.Name)
+        local iCounter, pCounter = 0, 0
 
-        if not status then print("Error: Can't find Name of the Recipe!") return nil
+        if not status then print("Error: Cannot find Name of the Recipe!") return nil
         elseif self[rkey] then print(recipe.Name .. " already listed; abort adding RecipeNode") return nil
         else
-            self[rkey] = {Name = recipe.Name, Duration = recipe.Duration, Ingredients = {}, Products = {}}
+            self[rkey] = {Name = recipe.Name, Duration = recipe.Duration, Ingredients = {}, Products = {}, Recipe = recipe}
             print(recipe.Name .. " detected; cacheing ingredients and products")
             local ingredients, products = recipe:getIngredients(), recipe:getProducts()
 
             for _, i in pairs(ingredients) do
                 local ikey = String.KeyGenerator(i.Type.Name)
                 self[rkey].Ingredients[ikey] = self:NewThroughtputNode(self[rkey], i, true)
+                iCounter = iCounter + 1
             end
             for _, p in pairs(products) do
                 local ikey = String.KeyGenerator(p.Type.Name)
                 self[rkey].Products[ikey] = self:NewThroughtputNode(self[rkey], p, nil)
+                pCounter = pCounter + 1
             end
-            print(#self[rkey].Ingredients .. " ingredients and " .. #self[rkey].Products .. " products added") return true
+
+            print(iCounter .. " ingredients and " .. pCounter .. " products added") return true
         end
     end
     
