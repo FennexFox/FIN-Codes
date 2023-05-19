@@ -39,12 +39,12 @@ function ProductionLine:New(doInitialize, doPrint) -- each entry of ProductionLi
             isNew = false
         end
 
-        return isNew, counter
+        return isNew
     end
 
     function ProductionLine:NewNodes(machineIDs)
         local recipeInstances = {}
-        local counter = 0
+        local counter, counters = 0, ""
         local machineProxies = component.proxy(machineIDs)
 
         for _, machineProxy in pairs(machineProxies) do
@@ -56,7 +56,13 @@ function ProductionLine:New(doInitialize, doPrint) -- each entry of ProductionLi
             end
         end
 
-        print(counter .. " Production Node set")
+        for _, v in pairs(recipeInstances)
+          local rkey = String.Keyenerator(v.Name)
+          counters = #self[rkey] .. " / " .. counters
+        end
+
+        string.sub(counters, 1, -4)
+        print(counter .. " Production Nodes of " .. counters .. " set")
         recipeTree:NewNodes(recipeInstances)
         return true
     end
