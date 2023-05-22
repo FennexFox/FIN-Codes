@@ -1,4 +1,3 @@
-
 -- Dependent on String
 
 RecipeTree = {}
@@ -6,45 +5,50 @@ RecipeTree = {}
 function RecipeTree:New()
     local instance = {}
 
-    function RecipeTree:sync() -- sync this instance with the RecipeTree on Central DB
+    function RecipeTree:Fetch() -- fetch RecipeTree on Central DB
         
     end
 
     function RecipeTree:NewNode(recipeInstance)
         local recipe = recipeInstance
         local status, rkey = pcall(String.KeyGenerator, recipe.Name)
-        local iCounter, pCounter = 0, 0
 
         if not status then error("Cannot find Name of the Recipe!")
-        elseif self[rkey] then print(self[rkey].Name .. " already listed")
-        else
-            self[rkey] = {Name = "[RN]_" .. rkey, Duration = recipe.Duration, ThroughputMatrix = {Inflows = {}, Outflows = {}}, Recipe = recipe}
-
+        elseif not self[rkey] then 
             local ingredients, products = recipe:getIngredients(), recipe:getProducts()
+            local iCounter, pCounter = 0, 0
+            
+            self[rkey] = {
+                Name = "[RN]_" .. rkey,
+                Duration = recipe.Duration,
+                ThroughputMatrix = {Inflows = {}, Outflows = {}},
+                Recipe = recipe
+            }
 
             for _, i in pairs(ingredients) do
-                local ikey = String.KeyGenerator(i.Type.Name)
                 self:SetThroughputMatrix(self[rkey], i, true)
                 iCounter = iCounter + 1
             end
             for _, p in pairs(products) do
-                local ikey = String.KeyGenerator(p.Type.Name)
                 self:SetThroughputMatrix(self[rkey], p, nil)
                 pCounter = pCounter + 1
             end
 
-            print(self[rkey].Name .. " has cached: " .. iCounter .. " ingredients & " .. pCounter .. " products") return true
+            print("  - " .. self[rkey].Name .. " set: " .. iCounter .. " ingredients & " .. pCounter .. " products")
+            return true
         end
     end
 
     function RecipeTree:NewNodes(recipeInstances)
         local counter = 0
 
+        print("\n... ReciepeTree Updating: Scanning " .. #recipeInstances .. " Recipes ...")
+
         for _, v in ipairs(recipeInstances) do
             if self:NewNode(v) then counter = counter + 1 end
         end
 
-        print(counter .. " Recipe Nodes added")
+        print("... ReciepeTree Updated: " .. counter .. " Node Added ...\n")
         return true
     end
     
