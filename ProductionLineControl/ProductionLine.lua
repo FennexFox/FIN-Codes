@@ -39,15 +39,15 @@ function ProductionControl:New(doInitialize, doPrint)
     function ProductionControl:LinkNodes(pLine, pChain, fTree)
         pLine:LinkNodes(pChain, fTree)
     end
-    
+
     function ProductionControl:SetTerminal(pLine, logisticsTerminal)
         logisticsTerminal:LinkNodes(pLine)
     end
 
-    function ProductionControl:Print(pLine)
+    function ProductionControl:Print()
        print("\n... Printing Production Chain ...\n")
 
-       for rkey, pNode in pairs(pLine) do
+       for _, pNode in pairs(productionLine) do
          local prevString, nextString = "", ""
 
          for _, v in pairs(pNode.Link.Prev) do prevString = v.Name .. ", " .. prevString end
@@ -62,9 +62,14 @@ function ProductionControl:New(doInitialize, doPrint)
        print("... End of the Production Chain ...\n")
     end
 
+    function ProductionControl:SetClock(rkey, clock)
+        productionLine:SetClock(rkey, clock)
+        flowTree:SetClock(rkey, clock)
+    end
+
     setmetatable(instance, {__index = self})
     if doInitialize then instance:Initialize() end
-    if doPrint then instance:Print(productionLine) end
+    if doPrint then instance:Print() end
     return instance
 end
 
@@ -115,7 +120,7 @@ function ProductionLine:New()
     function ProductionLine:SetNodes(recipeTree, productionChain, flowTree)
         local counter = 0
 
-        for rkey, pNode in pairs(self) do
+        for rkey, _ in pairs(self) do
             if not recipeTree[rkey] then error("RecipeNode " .. rkey .." not found, cannot expand Production Node!")
             else
                 local rNode = recipeTree[rkey]
@@ -136,6 +141,11 @@ function ProductionLine:New()
             end
             self[rkeyPrev].Link, self[rkeyPrev].Flow = pChain[rkeyPrev], fTree[rkeyPrev]
         end
+    end
+
+    function ProductionLine:SetClock(rkey, clock)
+        self[rkey].Clock = clock
+        for _, machine in pairs(self[rkey].Machines) do machine.potential = clock end
     end
                
     setmetatable(instance, {__index = self})
@@ -201,7 +211,20 @@ function FlowTree:New()
 
         return isNew
     end
-    
+
+    function FlowTree:SetClock(rkey, clock)
+        for _, d in pairs(self[rkey]) do
+            for _, i in pairs(d) do
+                i.TPM_a = i.TPM_s * clock
+            end
+        end
+    end
+
+    function FlowTree:UpdateClock(rkey, pLine)
+        local clock = pLine[rkey].Clock
+        self.SetClock(rkey, clock)
+    end
+
     setmetatable(instance, {__index = self})
     return instance
 end
@@ -234,7 +257,7 @@ function Terminal:New() -- Terminal class is a placeholder
             end
         end
 
-        print("Production Nodes Linked: " .. iCounter .. " IBT and " .. oCounter .. " OBT set") return true
+        print("\n  - Production Nodes Linked: " .. iCounter .. " IBT and " .. oCounter .. " OBT set") return true
     end
 
     setmetatable(instance, {__index = self})
