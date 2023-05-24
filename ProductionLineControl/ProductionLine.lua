@@ -2,13 +2,13 @@
 -- dependent on String
 
 ProductionControl = {}
-ProductionLine, ProductionChain, FlowTree, Terminal = {}, {}, {}, {}
+ProductionLine, Terminal = {}, {}
 
 function ProductionControl:New(doInitialize, doPrint)
     local instance = {}
-    local recipeTree, productionLine, productionChain, flowTree, terminal = {}, {}, {}, {}, {} -- these are private fields, shall not be directly referenced
+    local recipeTree, productionLine, terminal = {}, {}, {} -- these are private fields, shall not be directly referenced
     recipeTree = RecipeTree:New() -- This is a clone of RecipeTree from Central DB; should be changed to Fetch()
-    productionLine, productionChain, flowTree, terminal = ProductionLine:New(), ProductionChain:New(), FlowTree:New(), Terminal:New()
+    productionLine, terminal = ProductionLine:New(), Terminal:New()
 
     function ProductionControl:Initialize()
         local machineIDs = component.findComponent(findClass("Manufacturer"))
@@ -18,8 +18,8 @@ function ProductionControl:New(doInitialize, doPrint)
             print("\n... Production Line of " .. #machineIDs .. " Machines Initializing ...\n")
 
             ProductionControl:NewNodes(productionLine, recipeTree, machineIDs)
-            ProductionControl:SetNodes(productionLine, recipeTree, productionChain, flowTree)
-            ProductionControl:LinkNodes(productionLine, productionChain, flowTree)
+            ProductionControl:SetNodes(productionLine, recipeTree)
+            ProductionControl:LinkNodes(productionLine, recipeTree)
             ProductionControl:SetTerminal(productionLine, terminal)
 
             print("\n... Production Line of " .. #machineIDs .. " Machines Initialized ...\n")
@@ -32,12 +32,12 @@ function ProductionControl:New(doInitialize, doPrint)
         pLine:NewNodes(machineIDs, rTree)
     end
 
-    function ProductionControl:SetNodes(pLine, rTree, pChain, fTree)
-        pLine:SetNodes(rTree, pChain, fTree)
+    function ProductionControl:SetNodes(pLine, rTree)
+        pLine:SetNodes(rTree)
     end
 
-    function ProductionControl:LinkNodes(pLine, pChain, fTree)
-        pLine:LinkNodes(pChain, fTree)
+    function ProductionControl:LinkNodes(pLine, rTree)
+        pLine:LinkNodes(rTree)
     end
 
     function ProductionControl:SetTerminal(pLine, logisticsTerminal)
@@ -45,26 +45,25 @@ function ProductionControl:New(doInitialize, doPrint)
     end
 
     function ProductionControl:Print()
-       print("\n... Printing Production Chain ...\n")
+       print("\n... Printing Production Line ...\n")
 
        for _, pNode in pairs(productionLine) do
          local prevString, nextString = "", ""
 
-         for _, v in pairs(pNode.Link.Prev) do prevString = v.Name .. ", " .. prevString end
-         for _, w in pairs(pNode.Link.Next) do nextString = w.Name .. ", " .. nextString end
+         for _, v in pairs(pNode.Prev) do prevString = v.Name .. ", " .. prevString end
+         for _, w in pairs(pNode.Next) do nextString = w.Name .. ", " .. nextString end
 
          prevString = string.sub(prevString, 1, -3)
          nextString = string.sub(nextString, 1, -3)
 
-         print("  - " .. pNode.Name .. " has " .. #pNode.Machines .. " machine(s), is")
-         print("   after: " .. prevString .. "\n   before: " .. nextString .. "\n")
+         print("  * " .. pNode.Name .. " has " .. #pNode.Machines .. " machine(s), is")
+         print("   after: " .. prevString .. "\n   before: " .. nextString)
        end
-       print("... End of the Production Chain ...\n")
+       print("\n... End of the Production Line ...\n")
     end
 
     function ProductionControl:SetClock(rkey, clock)
         productionLine:SetClock(rkey, clock)
-        flowTree:SetClock(rkey, clock)
     end
 
     setmetatable(instance, {__index = self})
@@ -87,7 +86,8 @@ function ProductionLine:New()
                 Name = name,
                 Machines = {machineProxy},
                 Clock = 1,
-                Link = {},
+                Prev = {},
+                Next = {},
                 Flow = {},
             }
         else
@@ -111,120 +111,64 @@ function ProductionLine:New()
             end
         end
 
-        print("  - " .. #recipeInstances .. " Production Nodes set")
+        print("  - " .. #recipeInstances .. " Production Nodes set, Updating RecipeTree")
 
         recipeTree:NewNodes(recipeInstances)
         return recipeInstances
     end
 
-    function ProductionLine:SetNodes(recipeTree, productionChain, flowTree)
+    function ProductionLine:SetNodes(recipeTree)
         local counter = 0
 
         for rkey, _ in pairs(self) do
-            if not recipeTree[rkey] then error("RecipeNode " .. rkey .." not found, cannot expand Production Node!")
-            else
-                local rNode = recipeTree[rkey]
-                productionChain:SetNode(rNode)
-                flowTree:SetNode(rNode)
-                counter = counter + 1
-            end
+            local rNode =  assert(recipeTree[rkey], "RecipeNode " .. rkey .." not found, cannot expand Production Node!")
+
+            for ikeyIn, _ in pairs(rNode.Inflows) do self[rkey].Prev[ikeyIn] = {} end
+            for ikeyOut, _ in pairs(rNode.Outflows) do self[rkey].Next[ikeyOut] = {} end
+
+            counter = counter + 1
         end
 
-        print("  - " .. counter .. " Production Nodes expanded")
+        print("  - " .. counter .. " Production Nodes ready to Link")
         return true
     end
 
-    function ProductionLine:LinkNodes(pChain, fTree)
-        for rkeyPrev, _ in pairs(fTree) do
-            for rkeyThis, _ in pairs(fTree) do
-                pChain:LinkNodes(rkeyPrev, rkeyThis, self, fTree)
+    function ProductionLine:LinkNodes(rTree, pChain)
+        local isLinked, counter, counters = false, 0, 0
+
+        for rkeyThis, _ in pairs(rTree) do
+            for rkeyNext, _ in pairs(rTree) do
+                for ikey, flowPush in pairs(rTree[rkeyThis].Outflows) do
+                    for _, flowPull in pairs(rTree[rkeyNext].Inflows) do
+                        if flowPush.Name == flowPull.Name then
+                            self[rkeyThis].Next[ikey] = self[rkeyNext]
+                            self[rkeyNext].Prev[ikey] = self[rkeyThis]
+                            isLinked, counter = true, counter + 1
+                        end
+                    end
+                end
+                
+                if isLinked then
+                    print("    - " .. counter .. " Linkage from " .. self[rkeyThis].Name .. " to " .. self[rkeyNext].Name .. " set")
+                    isLinked, counters = false, counters + counter
+                    counter = 0
+                end
+
             end
-            self[rkeyPrev].Link, self[rkeyPrev].Flow = pChain[rkeyPrev], fTree[rkeyPrev]
         end
+
+        return counters
     end
 
     function ProductionLine:SetClock(rkey, clock)
         self[rkey].Clock = clock
+        self:UpdateClock(rkey, clock)
+    end
+
+    function ProductionLine:UpdateClock(rkey, clock)
         for _, machine in pairs(self[rkey].Machines) do machine.potential = clock end
     end
                
-    setmetatable(instance, {__index = self})
-    return instance
-end
-
-function ProductionChain:New()
-    local instance = {}
-
-    function ProductionChain:SetNode(recipeNode)
-        local isNew, rkey = false, string.sub(recipeNode.Name, 6, -1)
-
-        if not self[rkey] then
-            self[rkey] = {Prev = {}, Next = {}}
-            isNew = true
-        end
-
-        for ikeyIn, _ in pairs(recipeNode.ThroughputMatrix.Inflows) do self[rkey].Prev[ikeyIn] = {} end
-        for ikeyOut, _ in pairs(recipeNode.ThroughputMatrix.Outflows) do self[rkey].Next[ikeyOut] = {} end
-
-        return isNew
-    end
-
-    function ProductionChain:LinkNodes(prevKey, thisKey, pLine, fTree)
-        local isLinked, counter = false, 0
-        for ikey, flowPush in pairs(fTree[prevKey].Outflows) do
-            for _, flowPull in pairs(fTree[thisKey].Inflows) do
-                if flowPush.Name == flowPull.Name then
-                    self[prevKey].Next[ikey] = pLine[thisKey]
-                    self[thisKey].Prev[ikey] = pLine[prevKey]
-                    isLinked, counter = true, counter + 1
-                end
-            end
-        end
-
-        if isLinked then print("    - " .. counter .. " Linkage from " .. pLine[prevKey].Name .. " to " .. pLine[thisKey].Name .. " set") end
-        return isLinked
-    end
-
-    setmetatable(instance, {__index = self})
-    return instance
-end
-
-function FlowTree:New()
-    local instance = {}
-
-    function FlowTree:SetNode(recipeNode)
-        local isNew, rkey = false, string.sub(recipeNode.Name, 6, -1)
-
-        if not self[rkey] then
-            self[rkey] = {Inflows = {}, Outflows = {}}
-            isNew = true
-        end
-
-        for direction, throughputs in pairs(recipeNode.ThroughputMatrix) do
-            for _, throughput in pairs(throughputs) do
-                local iName, iAmount = throughput.Name, throughput.Amount
-                local ikey, throughputPerMin = String.KeyGenerator(iName), iAmount/recipeNode.Duration
-
-                self[rkey][direction][ikey] = {Name = iName, TPM_s = throughputPerMin, TPM_a = throughputPerMin * 1} -- 1 is supposed to be ClockSpeed
-            end
-        end
-
-        return isNew
-    end
-
-    function FlowTree:SetClock(rkey, clock)
-        for _, d in pairs(self[rkey]) do
-            for _, i in pairs(d) do
-                i.TPM_a = i.TPM_s * clock
-            end
-        end
-    end
-
-    function FlowTree:UpdateClock(rkey, pLine)
-        local clock = pLine[rkey].Clock
-        self.SetClock(rkey, clock)
-    end
-
     setmetatable(instance, {__index = self})
     return instance
 end
@@ -242,16 +186,16 @@ function Terminal:New() -- Terminal class is a placeholder
     function Terminal:LinkNodes(productionLine)
         local iCounter, oCounter = 0, 0
 
-        for rkey, v in pairs(productionLine) do
-            for ikey, w in pairs(v.Link.Prev) do
-                if not w.Machines then
-                  productionLine[rkey].Link.Prev[ikey] = self:SetNode(ikey, true)
+        for rkey, pNode in pairs(productionLine) do
+            for ikey, pNodePrev in pairs(pNode.Prev) do
+                if not pNodePrev.Machines then
+                  productionLine[rkey].Prev[ikey] = self:SetNode(ikey, true)
                   iCounter = iCounter + 1
                 end
             end
-            for ikey, w in pairs(v.Link.Next) do
-                if not w.Machines then
-                  productionLine[rkey].Link.Next[ikey] = self:SetNode(ikey, nil)
+            for ikey, pNodeNext in pairs(pNode.Next) do
+                if not pNodeNext.Machines then
+                  productionLine[rkey].Next[ikey] = self:SetNode(ikey, nil)
                   oCounter = oCounter + 1
                 end
             end

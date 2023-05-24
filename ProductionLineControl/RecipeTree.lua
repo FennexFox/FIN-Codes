@@ -21,7 +21,8 @@ function RecipeTree:New()
             self[rkey] = {
                 Name = "[RN]_" .. rkey,
                 Duration = recipe.Duration,
-                ThroughputMatrix = {Inflows = {}, Outflows = {}},
+                Inflows = {},
+                Outflows = {},
                 Recipe = recipe
             }
 
@@ -34,7 +35,7 @@ function RecipeTree:New()
                 pCounter = pCounter + 1
             end
 
-            print("  - " .. self[rkey].Name .. " set: " .. iCounter .. " ingredients & " .. pCounter .. " products")
+            print("    - " .. self[rkey].Name .. " set: " .. iCounter .. " ingredients & " .. pCounter .. " products")
             return true
         end
     end
@@ -42,13 +43,13 @@ function RecipeTree:New()
     function RecipeTree:NewNodes(recipeInstances)
         local counter = 0
 
-        print("\n... ReciepeTree Updating: Scanning " .. #recipeInstances .. " Recipes ...")
+        print("\n  - ReciepeTree Updating: Assessing " .. #recipeInstances .. " Recipe(s)")
 
         for _, v in ipairs(recipeInstances) do
             if self:NewNode(v) then counter = counter + 1 end
         end
 
-        print("... ReciepeTree Updated: " .. counter .. " Node Added ...\n")
+        print("  -  ReciepeTree Updated: " .. counter .. " Node(s) Added ...\n")
         return true
     end
     
@@ -56,7 +57,7 @@ function RecipeTree:New()
         local rkey, ikey, fkey = string.sub(recipeNode.Name, 6, -1), String.KeyGenerator(itemAmount.Type.Name), ""
         if isIngredient then fkey = "Inflows" else fkey = "Outflows" end
 
-        self[rkey].ThroughputMatrix[fkey][ikey] = {Name = itemAmount.Type.Name, Amount = itemAmount.Amount, Duration = recipeNode.Duration, Recipe = recipeNode}
+        self[rkey][fkey][ikey] = {Name = itemAmount.Type.Name, Amount = itemAmount.Amount, Duration = recipeNode.Duration}
     end
 
     setmetatable(instance, {__index = self})
