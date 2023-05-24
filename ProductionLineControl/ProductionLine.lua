@@ -37,7 +37,7 @@ function ProductionControl:New(doInitialize, doPrint)
     end
 
     function ProductionControl:LinkNodes(pLine, rTree)
-        pLine:LinkNodes(rTree)
+        pLine:ExploreNodes(pLine.LinkNodes, rTree)
     end
 
     function ProductionControl:SetTerminal(pLine, logisticsTerminal)
@@ -75,8 +75,8 @@ end
 function ProductionLine:New()
     local instance = {}
 
-    function ProductionLine:NewNode(machineProxy, recipeInstance)
-        local isNew, rkey = true, String.KeyGenerator(recipeInstance.Name)
+    function ProductionLine:NewNode(machineProxy, recipeInstance, clockSpeed)
+        local isNew, rkey, clock = true, String.KeyGenerator(recipeInstance.Name), clockSpeed or 1
         local name = "[PN]_" .. rkey
 
         if not self[rkey] then
@@ -85,7 +85,7 @@ function ProductionLine:New()
             self[rkey] = {
                 Name = name,
                 Machines = {machineProxy},
-                Clock = 1,
+                Clock = clock,
                 Prev = {},
                 Next = {},
                 Flow = {},
@@ -104,11 +104,8 @@ function ProductionLine:New()
         print("  - Scaning " .. #machineIDs .. " Machines to set Production Nodes")
 
         for _, machineProxy in pairs(machineProxies) do
-            local status, recipeInstance = pcall(machineProxy.getRecipe, machineProxy)
-            if not status then error(machineProxy.internalName .. " has no Recipe!")
-            elseif self:NewNode(machineProxy, recipeInstance) then
-                table.insert(recipeInstances, recipeInstance)
-            end
+            local recipeInstance = assert(machineProxy:getRecipe(), machineProxy.internalName .. " has no Recipe!")
+            if self:NewNode(machineProxy, recipeInstance) then table.insert(recipeInstances, recipeInstance) end
         end
 
         print("  - " .. #recipeInstances .. " Production Nodes set, Updating RecipeTree")
@@ -133,40 +130,42 @@ function ProductionLine:New()
         return true
     end
 
-    function ProductionLine:LinkNodes(rTree, pChain)
-        local isLinked, counter, counters = false, 0, 0
+    function ProductionLine:ExploreNodes(callback, ...)
+        local nodeCounter = 1
 
-        for rkeyThis, _ in pairs(rTree) do
-            for rkeyNext, _ in pairs(rTree) do
-                for ikey, flowPush in pairs(rTree[rkeyThis].Outflows) do
-                    for _, flowPull in pairs(rTree[rkeyNext].Inflows) do
-                        if flowPush.Name == flowPull.Name then
-                            self[rkeyThis].Next[ikey] = self[rkeyNext]
-                            self[rkeyNext].Prev[ikey] = self[rkeyThis]
-                            isLinked, counter = true, counter + 1
-                        end
-                    end
-                end
-                
-                if isLinked then
-                    print("    - " .. counter .. " Linkage from " .. self[rkeyThis].Name .. " to " .. self[rkeyNext].Name .. " set")
-                    isLinked, counters = false, counters + counter
-                    counter = 0
-                end
-
+        for rkeyThis, _ in pairs(self) do
+            for rkeyNext, _ in pairs(self) do
+                nodeCounter = nodeCounter + callback(self, rkeyThis, rkeyNext, ...)
             end
         end
 
-        return counters
+        assert(nodeCounter > 1, "No relations between Production Nodes found!")
+
+        print("  - " .. nodeCounter .. " Production Nodes processed")
+        return true
     end
 
-    function ProductionLine:SetClock(rkey, clock)
-        self[rkey].Clock = clock
-        self:UpdateClock(rkey, clock)
+    function ProductionLine:LinkNodes(rkeyThis, rkeyNext, recipeTree)
+        local itemLinks = 0
+        for ikey, flowPush in pairs(recipeTree[rkeyThis].Outflows) do
+            for _, flowPull in pairs(recipeTree[rkeyNext].Inflows) do
+                if flowPush.Name == flowPull.Name then
+                    self[rkeyThis].Next[ikey] = self[rkeyNext]
+                    self[rkeyNext].Prev[ikey] = self[rkeyThis]
+                    itemLinks = itemLinks + 1
+                end
+            end
+        end
+        
+        if itemLinks > 0 then
+            print("    - " .. itemLinks .. " item(s) linked from " .. self[rkeyThis].Name .. " to " .. self[rkeyNext].Name)
+        end
+
+        return math.min(1, itemLinks)
     end
 
-    function ProductionLine:UpdateClock(rkey, clock)
-        for _, machine in pairs(self[rkey].Machines) do machine.potential = clock end
+    function ProductionLine:UpdateClock(rkey)
+        for _, machine in pairs(self[rkey].Machines) do machine.potential = self[rkey].Clock end
     end
                
     setmetatable(instance, {__index = self})
@@ -207,5 +206,3 @@ function Terminal:New() -- Terminal class is a placeholder
     setmetatable(instance, {__index = self})
     return instance
 end
-
-A = ProductionControl:New(true, true)
