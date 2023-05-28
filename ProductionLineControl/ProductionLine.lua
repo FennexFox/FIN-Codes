@@ -66,8 +66,8 @@ function ProductionControl:New(doInitialize, doPrint)
         if nodeCounter > 0 then
             self:SortNodes(j)
         else
-            for _, v in pairs(terminal.OBT) do
-                v.Level = j
+            for k, v in pairs(terminal.OBT) do
+                terminal.OBT[k].Level = j
                 self[j][v.Name] = v
             end
             self.MaxLevel= j
@@ -117,8 +117,12 @@ function ProductionControl:New(doInitialize, doPrint)
        print("\n... End of the Production Line ...\n")
     end
 
-    function ProductionControl:SetClock(rkey, clock)
-        productionLine:SetClock(rkey, clock)
+    function ProductionControl:GetThroughputs()
+        
+    end
+
+    function ProductionControl:UpdateClock(rkey, clock)
+        productionLine:UpdateClock(rkey, clock)
     end
 
     setmetatable(instance, {__index = self})
@@ -220,6 +224,10 @@ function ProductionLine:New()
         end
 
         return math.min(1, itemLinks)
+    end
+
+    function ProductionLine:GetThroughputs()
+        
     end
 
     function ProductionLine:UpdateClock(rkey)
