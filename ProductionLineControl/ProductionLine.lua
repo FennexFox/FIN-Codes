@@ -43,11 +43,13 @@ function ProductionControl:New(doInitialize, doPrint)
 
     function ProductionControl:SetTerminal(pLine, terminal)
         terminal:LinkNodes(pLine)
-        self[1] = terminal.IBT
+
+        self[1] = {}
+        for _, v in pairs(terminal.IBT) do self[1][v.Name] = v end
     end
 
     function ProductionControl:SortNodes(i)
-        local j, jNodeName = i + 1, ""
+        local j, nodeCounter = i + 1, 0
         self[j] = self[j] or {}
 
         for _, iNode in pairs(self[i]) do
@@ -56,31 +58,62 @@ function ProductionControl:New(doInitialize, doPrint)
                 elseif jNode.Level > 1 then self[jNode.Level][jNode.Name] = nil
                 end
 
-                jNode.Level, jNodeName = j, jNodeName .. " / " .. jNode.Name
+                jNode.Level, nodeCounter = j, nodeCounter + 1
                 self[j][jNode.Name] = jNode
             end
+        end
 
-            print("  - Production Node Lv." .. j .. " has " .. jNodeName)
-            print(jNodeName)
+        if nodeCounter > 0 then
             self:SortNodes(j)
+        else
+            for _, v in pairs(terminal.OBT) do
+                v.Level = j
+                self[j][v.Name] = v
+            end
+            self.MaxLevel= j
         end
     end
 
     function ProductionControl:Print()
-       print("\n... Printing Production Line ...\n")
+       print("\n... Printing Production Line ...")
 
-       for _, pNode in pairs(productionLine) do
-         local prevString, nextString = "", ""
+    for k, pLevel in ipairs(self) do
+        print("\n  * Production Node Level " .. k)
+        if k == 1 then
+            for pKey, IBT in pairs(pLevel) do
+                local string = ""
 
-         for _, v in pairs(pNode.PrevNode) do prevString = v.Name .. ", " .. prevString end
-         for _, w in pairs(pNode.NextNode) do nextString = w.Name .. ", " .. nextString end
+                for _, v in pairs(IBT.NextNode) do string = v.Name .. ", " .. string end
+                string = string.sub(string, 1, -3)
 
-         prevString = string.sub(prevString, 1, -3)
-         nextString = string.sub(nextString, 1, -3)
+                print("    * " .. pKey .. " has " .. IBT.Terminals .. " terminal(s), is before: " .. string)
+            end
+        elseif k == self.MaxLevel then
+            for pKey, OBT in pairs(pLevel) do
+                local string = ""
 
-         print("  * " .. pNode.Name .. " has " .. #pNode.Machines .. " machine(s), is")
-         print("   after: " .. prevString .. "\n   before: " .. nextString)
-       end
+                for _, v in pairs(OBT.PrevNode) do string = v.Name .. ", " .. string end
+                string = string.sub(string, 1, -3)
+
+                print("    * " .. pKey .. " has " .. OBT.Terminals .. " terminal(s), is after: " .. string)
+            end
+        else
+            for pKey, pNode in pairs(pLevel) do
+                local prevString, nextString = "", ""
+
+                for _, v in pairs(pNode.PrevNode) do prevString = v.Name .. ", " .. prevString end
+                for _, w in pairs(pNode.NextNode) do nextString = w.Name .. ", " .. nextString end
+
+                prevString = string.sub(prevString, 1, -3)
+                nextString = string.sub(nextString, 1, -3)
+
+                print("    * " .. pKey .. " has " .. #pNode.Machines .. " machine(s), is")
+                print("       after: " .. prevString .. "\n       before: " .. nextString)
+            end
+        end
+    end
+
+
        print("\n... End of the Production Line ...\n")
     end
 
@@ -202,14 +235,20 @@ function Terminal:New() -- Terminal class is a placeholder
 
     function Terminal:NewNode(ikey, isInbound)
         local isInboundStr = isInbound and "IBT" or "OBT"
-        local node = {
-            Name = "[" .. isInboundStr .. "]_" .. ikey,
-            PrevNode = {},
-            NextNode = {}
-        }
-    
-        self[isInboundStr][ikey] = node
-        return node
+
+        if not self[isInboundStr][ikey] then
+            self[isInboundStr][ikey] = {
+                Name = "[" .. isInboundStr .. "]_" .. ikey,
+                Terminals = 1,
+                PrevNode = {},
+                NextNode = {},
+                Level = isInbound and 1 or 100
+            }
+        else
+            self[isInboundStr][ikey].Terminals = self[isInboundStr][ikey].Terminals + 1
+        end
+
+        return self[isInboundStr][ikey]
     end
     
     function Terminal:LinkNodes(productionLine)
@@ -219,12 +258,14 @@ function Terminal:New() -- Terminal class is a placeholder
             for ikey, pNodePrev in pairs(pNode.PrevNode) do
                 if not pNodePrev.Machines then
                   productionLine[rkey].PrevNode[ikey] = self:NewNode(ikey, true)
+                  table.insert(self.IBT[ikey].NextNode, productionLine[rkey])
                   iCounter = iCounter + 1
                 end
             end
             for ikey, pNodeNext in pairs(pNode.NextNode) do
                 if not pNodeNext.Machines then
                   productionLine[rkey].NextNode[ikey] = self:NewNode(ikey, nil)
+                  table.insert(self.OBT[ikey].PrevNode, productionLine[rkey])
                   oCounter = oCounter + 1
                 end
             end
