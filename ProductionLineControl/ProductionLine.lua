@@ -21,6 +21,7 @@ function ProductionControl:New(doInitialize, doPrint)
             ProductionControl:SetNodes(productionLine, recipeTree)
             ProductionControl:LinkNodes(productionLine, recipeTree)
             ProductionControl:SetTerminal(productionLine, terminal)
+            ProductionControl:SortNodes(1)
 
             print("\n... Production Line of " .. #machineIDs .. " Machines Initialized ...\n")
         end
@@ -40,8 +41,29 @@ function ProductionControl:New(doInitialize, doPrint)
         pLine:ExploreNodes(pLine.LinkNodes, rTree)
     end
 
-    function ProductionControl:SetTerminal(pLine, logisticsTerminal)
-        logisticsTerminal:LinkNodes(pLine)
+    function ProductionControl:SetTerminal(pLine, terminal)
+        terminal:LinkNodes(pLine)
+        self[1] = terminal.IBT
+    end
+
+    function ProductionControl:SortNodes(i)
+        local j, jNodeName = i + 1, ""
+        self[j] = self[j] or {}
+
+        for _, iNode in pairs(self[i]) do
+            for _, jNode in pairs(iNode.NextNode) do
+                if jNode.Level >= j then break
+                elseif jNode.Level > 1 then self[jNode.Level][jNode.Name] = nil
+                end
+
+                jNode.Level, jNodeName = j, jNodeName .. " / " .. jNode.Name
+                self[j][jNode.Name] = jNode
+            end
+
+            print("  - Production Node Lv." .. j .. " has " .. jNodeName)
+            print(jNodeName)
+            self:SortNodes(j)
+        end
     end
 
     function ProductionControl:Print()
@@ -50,8 +72,8 @@ function ProductionControl:New(doInitialize, doPrint)
        for _, pNode in pairs(productionLine) do
          local prevString, nextString = "", ""
 
-         for _, v in pairs(pNode.Prev) do prevString = v.Name .. ", " .. prevString end
-         for _, w in pairs(pNode.Next) do nextString = w.Name .. ", " .. nextString end
+         for _, v in pairs(pNode.PrevNode) do prevString = v.Name .. ", " .. prevString end
+         for _, w in pairs(pNode.NextNode) do nextString = w.Name .. ", " .. nextString end
 
          prevString = string.sub(prevString, 1, -3)
          nextString = string.sub(nextString, 1, -3)
@@ -86,9 +108,11 @@ function ProductionLine:New()
                 Name = name,
                 Machines = {machineProxy},
                 Clock = clock,
-                Prev = {},
-                Next = {},
-                Flow = {},
+                PrevNode = {},
+                NextNode = {},
+                Inflows = {},
+                Outflows = {},
+                Level = 1
             }
         else
             table.insert(self[rkey].Machines, machineProxy)
@@ -120,8 +144,8 @@ function ProductionLine:New()
         for rkey, _ in pairs(self) do
             local rNode =  assert(recipeTree[rkey], "RecipeNode " .. rkey .." not found, cannot expand Production Node!")
 
-            for ikeyIn, _ in pairs(rNode.Inflows) do self[rkey].Prev[ikeyIn] = {} end
-            for ikeyOut, _ in pairs(rNode.Outflows) do self[rkey].Next[ikeyOut] = {} end
+            for ikeyIn, _ in pairs(rNode.Inflows) do self[rkey].PrevNode[ikeyIn] = {} end
+            for ikeyOut, _ in pairs(rNode.Outflows) do self[rkey].NextNode[ikeyOut] = {} end
 
             counter = counter + 1
         end
@@ -147,16 +171,17 @@ function ProductionLine:New()
 
     function ProductionLine:LinkNodes(rkeyThis, rkeyNext, recipeTree)
         local itemLinks = 0
+
         for ikey, flowPush in pairs(recipeTree[rkeyThis].Outflows) do
             for _, flowPull in pairs(recipeTree[rkeyNext].Inflows) do
                 if flowPush.Name == flowPull.Name then
-                    self[rkeyThis].Next[ikey] = self[rkeyNext]
-                    self[rkeyNext].Prev[ikey] = self[rkeyThis]
+                    self[rkeyThis].NextNode[ikey], self[rkeyThis].Outflows[ikey] = self[rkeyNext], recipeTree[rkeyThis].Outflows[ikey]
+                    self[rkeyNext].PrevNode[ikey], self[rkeyNext].Inflows[ikey] = self[rkeyThis], recipeTree[rkeyNext].Inflows[ikey]
                     itemLinks = itemLinks + 1
                 end
             end
         end
-        
+
         if itemLinks > 0 then
             print("    - " .. itemLinks .. " item(s) linked from " .. self[rkeyThis].Name .. " to " .. self[rkeyNext].Name)
         end
@@ -175,32 +200,37 @@ end
 function Terminal:New() -- Terminal class is a placeholder
     local instance = {IBT = {}, OBT = {}}
 
-    function Terminal:SetNode(ikey, isInbound)
-        if isInbound then isInbound = "IBT" else isInbound = "OBT" end
-
-        self[isInbound][ikey] = {Name = "[" .. isInbound .. "]_" .. ikey}
-        return self[isInbound][ikey]
+    function Terminal:NewNode(ikey, isInbound)
+        local isInboundStr = isInbound and "IBT" or "OBT"
+        local node = {
+            Name = "[" .. isInboundStr .. "]_" .. ikey,
+            PrevNode = {},
+            NextNode = {}
+        }
+    
+        self[isInboundStr][ikey] = node
+        return node
     end
-
+    
     function Terminal:LinkNodes(productionLine)
         local iCounter, oCounter = 0, 0
 
         for rkey, pNode in pairs(productionLine) do
-            for ikey, pNodePrev in pairs(pNode.Prev) do
+            for ikey, pNodePrev in pairs(pNode.PrevNode) do
                 if not pNodePrev.Machines then
-                  productionLine[rkey].Prev[ikey] = self:SetNode(ikey, true)
+                  productionLine[rkey].PrevNode[ikey] = self:NewNode(ikey, true)
                   iCounter = iCounter + 1
                 end
             end
-            for ikey, pNodeNext in pairs(pNode.Next) do
+            for ikey, pNodeNext in pairs(pNode.NextNode) do
                 if not pNodeNext.Machines then
-                  productionLine[rkey].Next[ikey] = self:SetNode(ikey, nil)
+                  productionLine[rkey].NextNode[ikey] = self:NewNode(ikey, nil)
                   oCounter = oCounter + 1
                 end
             end
         end
 
-        print("\n  - Production Nodes Linked: " .. iCounter .. " IBT and " .. oCounter .. " OBT set") return true
+        print("\n  - Production Nodes Linked: " .. iCounter .. " IBT(s) and " .. oCounter .. " OBT(s) set") return true
     end
 
     setmetatable(instance, {__index = self})

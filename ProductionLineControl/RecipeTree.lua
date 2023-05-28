@@ -11,10 +11,9 @@ function RecipeTree:New()
 
     function RecipeTree:NewNode(recipeInstance)
         local recipe = recipeInstance
-        local status, rkey = pcall(String.KeyGenerator, recipe.Name)
+        local rkey = assert(String.KeyGenerator(recipe.Name), "Cannot find Name of the Recipe!")
 
-        if not status then error("Cannot find Name of the Recipe!")
-        elseif not self[rkey] then 
+        if not self[rkey] then
             local ingredients, products = recipe:getIngredients(), recipe:getProducts()
             local iCounter, pCounter = 0, 0
             
