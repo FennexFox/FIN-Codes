@@ -1,7 +1,7 @@
 -- dependent on RecipeTree
 -- dependent on String
 
-ProductionControl = {}
+ProductionControl = {Levels = {}}
 ProductionLine, Terminal = {}, {}
 
 function ProductionControl:New(doInitialize, doPrint)
@@ -43,23 +43,22 @@ function ProductionControl:New(doInitialize, doPrint)
 
     function ProductionControl:SetTerminal(pLine, terminal)
         terminal:LinkNodes(pLine)
-
-        self[1] = {}
-        for _, v in pairs(terminal.IBT) do self[1][v.Name] = v end
+        self.Levels[1] = self.Levels[1] or {}
+        for _, v in pairs(terminal.IBT) do self.Levels[1][v.Name] = v end
     end
 
     function ProductionControl:SortNodes(i)
         local j, nodeCounter = i + 1, 0
-        self[j] = self[j] or {}
+        self.Levels[j] = self.Levels[j] or {}
 
-        for _, iNode in pairs(self[i]) do
-            for _, jNode in pairs(iNode.NextNode) do
+        for _, iNode in pairs(self.Levels[i]) do
+            for _, jNode in pairs(iNode.NextNodes) do
                 if jNode.Level >= j then break
-                elseif jNode.Level > 1 then self[jNode.Level][jNode.Name] = nil
+                elseif jNode.Level > 1 then self.Levels[jNode.Level][jNode.Name] = nil
                 end
 
                 jNode.Level, nodeCounter = j, nodeCounter + 1
-                self[j][jNode.Name] = jNode
+                self.Levels[j][jNode.Name] = jNode
             end
         end
 
@@ -68,31 +67,30 @@ function ProductionControl:New(doInitialize, doPrint)
         else
             for k, v in pairs(terminal.OBT) do
                 terminal.OBT[k].Level = j
-                self[j][v.Name] = v
+                self.Levels[j][v.Name] = v
             end
-            self.MaxLevel= j
         end
     end
 
     function ProductionControl:Print()
        print("\n... Printing Production Line ...")
 
-    for k, pLevel in ipairs(self) do
+    for k, pLevel in ipairs(self.Levels) do
         print("\n  * Production Node Level " .. k)
         if k == 1 then
             for pKey, IBT in pairs(pLevel) do
                 local string = ""
 
-                for _, v in pairs(IBT.NextNode) do string = v.Name .. ", " .. string end
+                for _, v in pairs(IBT.NextNodes) do string = v.Name .. ", " .. string end
                 string = string.sub(string, 1, -3)
 
                 print("    * " .. pKey .. " has " .. IBT.Terminals .. " terminal(s), is before: " .. string)
             end
-        elseif k == self.MaxLevel then
+        elseif k == #self.Levels then
             for pKey, OBT in pairs(pLevel) do
                 local string = ""
 
-                for _, v in pairs(OBT.PrevNode) do string = v.Name .. ", " .. string end
+                for _, v in pairs(OBT.PrevNodes) do string = v.Name .. ", " .. string end
                 string = string.sub(string, 1, -3)
 
                 print("    * " .. pKey .. " has " .. OBT.Terminals .. " terminal(s), is after: " .. string)
@@ -101,8 +99,8 @@ function ProductionControl:New(doInitialize, doPrint)
             for pKey, pNode in pairs(pLevel) do
                 local prevString, nextString = "", ""
 
-                for _, v in pairs(pNode.PrevNode) do prevString = v.Name .. ", " .. prevString end
-                for _, w in pairs(pNode.NextNode) do nextString = w.Name .. ", " .. nextString end
+                for _, v in pairs(pNode.PrevNodes) do prevString = v.Name .. ", " .. prevString end
+                for _, w in pairs(pNode.NextNodes) do nextString = w.Name .. ", " .. nextString end
 
                 prevString = string.sub(prevString, 1, -3)
                 nextString = string.sub(nextString, 1, -3)
@@ -181,8 +179,8 @@ function ProductionLine:New()
         for rkey, _ in pairs(self) do
             local rNode =  assert(recipeTree[rkey], "RecipeNode " .. rkey .." not found, cannot expand Production Node!")
 
-            for ikeyIn, _ in pairs(rNode.Inflows) do self[rkey].PrevNode[ikeyIn] = {} end
-            for ikeyOut, _ in pairs(rNode.Outflows) do self[rkey].NextNode[ikeyOut] = {} end
+            for ikeyIn, _ in pairs(rNode.Inflows) do self[rkey].PrevNodes[ikeyIn] = {} end
+            for ikeyOut, _ in pairs(rNode.Outflows) do self[rkey].NextNodes[ikeyOut] = {} end
 
             counter = counter + 1
         end
@@ -212,8 +210,8 @@ function ProductionLine:New()
         for ikey, flowPush in pairs(recipeTree[rkeyThis].Outflows) do
             for _, flowPull in pairs(recipeTree[rkeyNext].Inflows) do
                 if flowPush.Name == flowPull.Name then
-                    self[rkeyThis].NextNode[ikey], self[rkeyThis].Outflows[ikey] = self[rkeyNext], recipeTree[rkeyThis].Outflows[ikey]
-                    self[rkeyNext].PrevNode[ikey], self[rkeyNext].Inflows[ikey] = self[rkeyThis], recipeTree[rkeyNext].Inflows[ikey]
+                    self[rkeyThis].NextNodes[ikey], self[rkeyThis].Outflows[ikey] = self[rkeyNext], recipeTree[rkeyThis].Outflows[ikey]
+                    self[rkeyNext].PrevNodes[ikey], self[rkeyNext].Inflows[ikey] = self[rkeyThis], recipeTree[rkeyNext].Inflows[ikey]
                     itemLinks = itemLinks + 1
                 end
             end
@@ -263,17 +261,17 @@ function Terminal:New() -- Terminal class is a placeholder
         local iCounter, oCounter = 0, 0
 
         for rkey, pNode in pairs(productionLine) do
-            for ikey, pNodePrev in pairs(pNode.PrevNode) do
+            for ikey, pNodePrev in pairs(pNode.PrevNodes) do
                 if not pNodePrev.Machines then
-                  productionLine[rkey].PrevNode[ikey] = self:NewNode(ikey, true)
-                  table.insert(self.IBT[ikey].NextNode, productionLine[rkey])
+                  productionLine[rkey].PrevNodes[ikey] = self:NewNode(ikey, true)
+                  table.insert(self.IBT[ikey].NextNodes, productionLine[rkey])
                   iCounter = iCounter + 1
                 end
             end
-            for ikey, pNodeNext in pairs(pNode.NextNode) do
+            for ikey, pNodeNext in pairs(pNode.NextNodes) do
                 if not pNodeNext.Machines then
-                  productionLine[rkey].NextNode[ikey] = self:NewNode(ikey, nil)
-                  table.insert(self.OBT[ikey].PrevNode, productionLine[rkey])
+                  productionLine[rkey].NextNodes[ikey] = self:NewNode(ikey, nil)
+                  table.insert(self.OBT[ikey].PrevNodes, productionLine[rkey])
                   oCounter = oCounter + 1
                 end
             end
