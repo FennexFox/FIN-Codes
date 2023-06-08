@@ -56,7 +56,7 @@ function RecipeTree:New()
         local rkey, ikey, fkey = string.sub(recipeNode.Name, 6, -1), String.KeyGenerator(itemAmount.Type.Name), ""
         if isIngredient then fkey = "Inflows" else fkey = "Outflows" end
 
-        self[rkey][fkey][ikey] = {Name = itemAmount.Type.Name, Amount = itemAmount.Amount, Duration = recipeNode.Duration}
+        self[rkey][fkey][ikey] = {Item = itemAmount.Type, Amount = itemAmount.Amount, Duration = recipeNode.Duration}
     end
 
     setmetatable(instance, {__index = self})

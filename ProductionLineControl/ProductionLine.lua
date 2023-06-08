@@ -37,7 +37,7 @@ function ProductionControl:New(doInitialize, doPrint)
     end
 
     function ProductionControl:SetTerminal(pLine, rTree, terminal)
-        terminal:SetTerminal(pLine, rTree)
+        terminal:SetProductionTerminal(pLine, rTree)
         self.Levels[1] = self.Levels[1] or {}
         for _, v in pairs(terminal.IBT) do self.Levels[1][v.Name] = v end
     end
@@ -79,7 +79,7 @@ function ProductionControl:New(doInitialize, doPrint)
                     for _, v in pairs(IBT.NextNodes) do string = v.Name .. ", " .. string end
                     string = string.sub(string, 1, -3)
 
-                    print("    * " .. pKey .. " has " .. #IBT.Terminals .. " terminal(s), is before: " .. string)
+                    print("    * " .. pKey .. " has " .. #IBT.Stations .. " terminal(s), is before: " .. string)
                 end
             elseif k == #self.Levels then
                 for pKey, OBT in pairs(pLevel) do
@@ -88,7 +88,7 @@ function ProductionControl:New(doInitialize, doPrint)
                     for _, v in pairs(OBT.PrevNodes) do string = v.Name .. ", " .. string end
                     string = string.sub(string, 1, -3)
 
-                    print("    * " .. pKey .. " has " .. #OBT.Terminals .. " terminal(s), is after: " .. string)
+                    print("    * " .. pKey .. " has " .. #OBT.Stations .. " terminal(s), is after: " .. string)
                 end
             else
                 for pKey, pNode in pairs(pLevel) do
@@ -185,9 +185,11 @@ function ProductionLine:New()
             for ikey2, flowPull in pairs(recipeTree[rkeyNext].Inflows) do
                 if ikey1 == ikey2 then
                     self[rkeyThis].NextNodes[rkeyNext], self[rkeyThis].Supplies[rkeyNext] = self[rkeyNext], flowPush
+                    self[rkeyThis].Supplies[rkeyNext].iKey = String.KeyGenerator(flowPush.Item.Name)
                     self:UpdateThroughput(rkeyThis)
 
                     self[rkeyNext].PrevNodes[rkeyThis], self[rkeyNext].Demands[rkeyThis] = self[rkeyThis], flowPull
+                    self[rkeyNext].Demands[rkeyThis].iKey = String.KeyGenerator(flowPull.Item.Name)
                     self:UpdateThroughput(rkeyNext)
 
                     itemLinks = itemLinks + 1
@@ -208,19 +210,10 @@ function ProductionLine:New()
         for _, demand in pairs(self[rkey].Demands) do
             demand.Amount = demand.Amount * multiplier1
             demand.Duration = demand.Duration / multiplier2
-
-            if demand.Name then
-                demand.Key = String.KeyGenerator(demand.Name)
-                demand.Name = nil
-            end
         end
         for _, supply in pairs(self[rkey].Supplies) do
             supply.Amount = supply.Amount * multiplier1
             supply.Duration = supply.Duration / multiplier2
-            if supply.Name then
-                supply.Key = String.KeyGenerator(supply.Name)
-                supply.Name = nil
-            end
         end
     end
 
@@ -246,7 +239,7 @@ function ProductionLine:New()
         local DPM = 0
         for _, pNode in pairs(self) do
             for _, demand in pairs(pNode.Demands) do
-                if demand.Key == ikey then
+                if demand.iKey == ikey then
                     DPM = DPM + demand.Amount / demand.Duration
                 end
             end
@@ -260,7 +253,7 @@ function ProductionLine:New()
 
         for _, pNode in pairs(self) do
             for _, throughput in pairs(pNode[direction]) do
-                if throughput.Key == ikey then return true end
+                if throughput.iKey == ikey then return true end
             end
         end
     end
