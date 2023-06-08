@@ -1,8 +1,8 @@
 -- dependent on RecipeTree
 -- dependent on String
+-- dependent on Terminal
 
-ProductionControl = {Levels = {}}
-ProductionLine, Terminal = {}, {}
+ProductionControl, ProductionLine = {Levels = {}}, {}
 
 function ProductionControl:New(doInitialize, doPrint)
     local instance = {}
@@ -37,7 +37,7 @@ function ProductionControl:New(doInitialize, doPrint)
     end
 
     function ProductionControl:SetTerminal(pLine, rTree, terminal)
-        terminal:LinkNodes(pLine, rTree)
+        terminal:SetTerminal(pLine, rTree)
         self.Levels[1] = self.Levels[1] or {}
         for _, v in pairs(terminal.IBT) do self.Levels[1][v.Name] = v end
     end
@@ -79,7 +79,7 @@ function ProductionControl:New(doInitialize, doPrint)
                     for _, v in pairs(IBT.NextNodes) do string = v.Name .. ", " .. string end
                     string = string.sub(string, 1, -3)
 
-                    print("    * " .. pKey .. " has " .. IBT.Terminals .. " terminal(s), is before: " .. string)
+                    print("    * " .. pKey .. " has " .. #IBT.Terminals .. " terminal(s), is before: " .. string)
                 end
             elseif k == #self.Levels then
                 for pKey, OBT in pairs(pLevel) do
@@ -88,7 +88,7 @@ function ProductionControl:New(doInitialize, doPrint)
                     for _, v in pairs(OBT.PrevNodes) do string = v.Name .. ", " .. string end
                     string = string.sub(string, 1, -3)
 
-                    print("    * " .. pKey .. " has " .. OBT.Terminals .. " terminal(s), is after: " .. string)
+                    print("    * " .. pKey .. " has " .. #OBT.Terminals .. " terminal(s), is after: " .. string)
                 end
             else
                 for pKey, pNode in pairs(pLevel) do
@@ -269,54 +269,6 @@ function ProductionLine:New()
         for _, machine in pairs(self[rkey].Machines) do machine.potential = self[rkey].Clock end
     end
                
-    setmetatable(instance, {__index = self})
-    return instance
-end
-
-function Terminal:New() -- Terminal class is a placeholder
-    local instance = {IBT = {}, OBT = {}}
-
-    function Terminal:NewNode(ikey, isInbound)
-        local isInboundStr = isInbound and "IBT" or "OBT"
-
-        if not self[isInboundStr][ikey] then
-            self[isInboundStr][ikey] = {
-                Name = "[" .. isInboundStr .. "]_" .. ikey,
-                Terminals = 1,
-                PrevNodes = {},
-                NextNodes = {},
-                Level = isInbound and 1 or 100
-            }
-        else
-            self[isInboundStr][ikey].Terminals = self[isInboundStr][ikey].Terminals + 1
-        end
-
-        return self[isInboundStr][ikey]
-    end
-    
-    function Terminal:LinkNodes(pLine, rTree)
-        local iCounter, oCounter = 0, 0
-
-        for rkey, pNode in pairs(pLine) do
-            for ikeyIn, _ in pairs(rTree[rkey].Inflows) do
-                if not pLine:isInChain(ikeyIn, true) then
-                  pLine[rkey].PrevNodes[ikeyIn] = self:NewNode(ikeyIn, true)
-                  table.insert(self.IBT[ikeyIn].NextNodes, pLine[rkey])
-                  iCounter = iCounter + 1
-                end
-            end
-            for ikeyOut, _ in pairs(rTree[rkey].Outflows) do
-                if not pLine:isInChain(ikeyOut, false) then
-                  pLine[rkey].NextNodes[ikeyOut] = self:NewNode(ikeyOut, false)
-                  table.insert(self.OBT[ikeyOut].PrevNodes, pLine[rkey])
-                  oCounter = oCounter + 1
-                end
-            end
-        end
-
-        print("\n  - Production Nodes Linked: " .. iCounter .. " IBT(s) and " .. oCounter .. " OBT(s) set") return true
-    end
-
     setmetatable(instance, {__index = self})
     return instance
 end
