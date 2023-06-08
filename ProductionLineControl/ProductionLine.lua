@@ -135,8 +135,8 @@ function ProductionLine:New()
                 Clock = clock,
                 PrevNodes = {},
                 NextNodes = {},
-                Inflows = {},
-                Outflows = {},
+                Demands = {},
+                Supplies = {},
                 Level = 1
             }
         else
@@ -184,10 +184,10 @@ function ProductionLine:New()
         for ikey1, flowPush in pairs(recipeTree[rkeyThis].Outflows) do
             for ikey2, flowPull in pairs(recipeTree[rkeyNext].Inflows) do
                 if ikey1 == ikey2 then
-                    self[rkeyThis].NextNodes[rkeyNext], self[rkeyThis].Outflows[rkeyNext] = self[rkeyNext], flowPush
+                    self[rkeyThis].NextNodes[rkeyNext], self[rkeyThis].Supplies[rkeyNext] = self[rkeyNext], flowPush
                     self:UpdateThroughput(rkeyThis)
 
-                    self[rkeyNext].PrevNodes[rkeyThis], self[rkeyNext].Inflows[rkeyThis] = self[rkeyThis], flowPull
+                    self[rkeyNext].PrevNodes[rkeyThis], self[rkeyNext].Demands[rkeyThis] = self[rkeyThis], flowPull
                     self:UpdateThroughput(rkeyNext)
 
                     itemLinks = itemLinks + 1
@@ -205,20 +205,28 @@ function ProductionLine:New()
     function ProductionLine:UpdateThroughput(rkey)
         local multiplier1, multiplier2 = #self[rkey].Machines, self[rkey].Clock
 
-        for _, inflow in pairs(self[rkey].Inflows) do
-            inflow.Amount = inflow.Amount * multiplier1
-            inflow.Duration = inflow.Duration / multiplier2
+        for _, demand in pairs(self[rkey].Demands) do
+            demand.Amount = demand.Amount * multiplier1
+            demand.Duration = demand.Duration / multiplier2
+
+            if demand.Name then
+                demand.Key = String.KeyGenerator(demand.Name)
+                demand.Name = nil
+            end
         end
-        for _, outflow in pairs(self[rkey].Outflows) do
-            outflow.Amount = outflow.Amount * multiplier1
-            outflow.Duration = outflow.Duration / multiplier2
+        for _, supply in pairs(self[rkey].Supplies) do
+            supply.Amount = supply.Amount * multiplier1
+            supply.Duration = supply.Duration / multiplier2
+            if supply.Name then
+                supply.Key = String.KeyGenerator(supply.Name)
+                supply.Name = nil
+            end
         end
     end
 
---[[
-    function ProductionLine:GetItemSurplusPerMin(rkey, ikey)
-        local push, pull = self[rkey].Outflows[ikey], self[rkey].NextNodes[ikey].Inflows[ikey]
-        push, pull = push.Amount / push.Duration, pull.Amount / pull.Duration
+    function ProductionLine:GetSurplusPerMin(rkey, ikey)
+        local push, pull = self[rkey].Supplies[ikey], self:GetDemandPerMin(ikey)
+        push = push.Amount / push.Duration
 
         return {Push = push, Pull = pull, Surplus = push - pull, ClockT = pull / push}
     end
@@ -226,22 +234,33 @@ function ProductionLine:New()
     function ProductionLine:GetLeastClockT(rkey)
         local clockT = 0
 
-        for ikey, _ in pairs(self[rkey].Outflows) do
-            local clockI = self:GetItemSurplusPerMin(rkey, ikey).ClockT
+        for ikey, _ in pairs(self[rkey].Supplies) do
+            local clockI = self:GetSurplusPerMin(rkey, ikey).ClockT
             clockT = math.max(clockT, clockI)
         end
 
         return clockT
     end
-]]--
+
+    function ProductionLine:GetDemandPerMin(ikey)
+        local DPM = 0
+        for _, pNode in pairs(self) do
+            for _, demand in pairs(pNode.Demands) do
+                if demand.Key == ikey then
+                    DPM = DPM + demand.Amount / demand.Duration
+                end
+            end
+        end
+
+        return DPM
+    end
 
     function ProductionLine:isInChain(ikey, isInflow)
-        local direction = isInflow and "Inflows" or "Outflows"
+        local direction = isInflow and "Demands" or "Supplies"
 
         for _, pNode in pairs(self) do
             for _, throughput in pairs(pNode[direction]) do
-                local item = String.KeyGenerator(throughput.Name)
-                if item == ikey then return true end
+                if throughput.Key == ikey then return true end
             end
         end
     end
