@@ -137,6 +137,7 @@ function ProductionLine:New()
                 NextNodes = {},
                 Demands = {},
                 Supplies = {},
+                Tags = {},
                 Level = 1
             }
         else
@@ -168,7 +169,9 @@ function ProductionLine:New()
 
         for rkeyThis, _ in pairs(self) do
             for rkeyNext, _ in pairs(self) do
-                nodeCounter = nodeCounter + callback(self, rkeyThis, rkeyNext, ...)
+                if rkeyThis ~= rkeyNext then
+                    nodeCounter = nodeCounter + callback(self, rkeyThis, rkeyNext, ...)
+                end
             end
         end
 
@@ -198,10 +201,31 @@ function ProductionLine:New()
         end
 
         if itemLinks > 0 then
-            print("    - " .. itemLinks .. " item(s) linked from " .. self[rkeyThis].Name .. " to " .. self[rkeyNext].Name)
+            print("  - " .. itemLinks .. " item(s) linked from " .. self[rkeyThis].Name .. " to " .. self[rkeyNext].Name)
         end
 
         return math.min(1, itemLinks)
+    end
+
+    function ProductionLine:IterateNodes(rkeyI, isIncremental, callback, ...)
+        if not self[rkeyI] then return end
+        
+        local nodeI = self[rkeyI]
+        local direction = isIncremental and "NextNodes" or "PrevNodes"
+
+        callback(self, nodeI, rkeyI, ...)
+
+        for rkeyJ, _ in pairs(nodeI[direction]) do
+            self:IterateNodes(rkeyJ, isIncremental, callback, ...)
+        end
+
+        return rkeyI
+    end
+
+    function ProductionLine:SetTags(nodeI, rkeyI, tag)
+        table.insert(nodeI.Tags, tag)
+
+        return rkeyI
     end
 
     function ProductionLine:UpdateThroughput(rkey)
@@ -249,13 +273,15 @@ function ProductionLine:New()
     end
 
     function ProductionLine:isInChain(ikey, isInflow)
-        local direction = isInflow and "Demands" or "Supplies"
+        local isInChain, direction = false, isInflow and "Demands" or "Supplies"
 
         for _, pNode in pairs(self) do
             for _, throughput in pairs(pNode[direction]) do
-                if throughput.iKey == ikey then return true end
+                if throughput.iKey == ikey then isInChain = true end
             end
         end
+
+        return isInChain
     end
 
     function ProductionLine:UpdateClock(rkey)

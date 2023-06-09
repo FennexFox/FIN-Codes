@@ -30,16 +30,24 @@ function Terminal:New() -- Terminal class is a placeholder
         for rkey, _ in pairs(pLine) do
             for ikeyIn, inflow in pairs(rTree[rkey].Inflows) do
                 if not pLine:isInChain(ikeyIn, true) then
-                  pLine[rkey].PrevNodes[ikeyIn] = self:NewNode(inflow.Item, true)
-                  table.insert(self.IBT[ikeyIn].NextNodes, pLine[rkey])
-                  iCounter = iCounter + 1
+                    local terminal = self:NewNode(inflow.Item, true)
+
+                    pLine[rkey].PrevNodes[terminal.Name] = terminal
+                    pLine:IterateNodes(rkey, true, pLine.SetTags, terminal.Name)
+                    table.insert(self.IBT[ikeyIn].NextNodes, pLine[rkey])
+                    
+                    iCounter = iCounter + 1
                 end
             end
             for ikeyOut, outflow in pairs(rTree[rkey].Outflows) do
                 if not pLine:isInChain(ikeyOut, false) then
-                  pLine[rkey].NextNodes[ikeyOut] = self:NewNode(outflow.Item, false)
-                  table.insert(self.OBT[ikeyOut].PrevNodes, pLine[rkey])
-                  oCounter = oCounter + 1
+                    local terminal = self:NewNode(outflow.Item, false)
+
+                    pLine[rkey].NextNodes[terminal.Name] = terminal
+                    pLine:IterateNodes(rkey, false, pLine.SetTags, terminal.Name)
+                    table.insert(self.OBT[ikeyOut].PrevNodes, pLine[rkey])
+
+                    oCounter = oCounter + 1
                 end
             end
         end
