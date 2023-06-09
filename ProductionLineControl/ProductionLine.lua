@@ -33,7 +33,7 @@ function ProductionControl:New(doInitialize, doPrint)
     end
 
     function ProductionControl:LinkNodes(pLine, rTree)
-        pLine:ExploreNodes(pLine.LinkNodes, rTree)
+        pLine:IterateNodesPair(pLine.LinkNodes, rTree)
     end
 
     function ProductionControl:SetTerminal(pLine, rTree, terminal)
@@ -60,9 +60,9 @@ function ProductionControl:New(doInitialize, doPrint)
         if nodeCounter > 0 then
             self:SortNodes(j)
         else
-            for k, v in pairs(terminal.OBT) do
-                terminal.OBT[k].Level = j
-                self.Levels[j][v.Name] = v
+            for ikey, outboundT in pairs(terminal.OBT) do
+                terminal.OBT[ikey].Level = j
+                self.Levels[j][outboundT.Name] = outboundT
             end
         end
     end
@@ -107,6 +107,23 @@ function ProductionControl:New(doInitialize, doPrint)
         end
 
        print("\n... End of the Production Line ...\n")
+    end
+
+    function ProductionControl:Main()
+        while true do
+            event.pull(1)
+
+            local IBT_Param, OBT_Param = {}, {}
+            for name, inboundT in pairs(self.Levels[1]) do
+                local ikey = String.FindKey(name)
+                IBT_Param[name] = {math.min(1, terminal:GetItemLevel(ikey, true).RatioAmount * 24), inboundT.Tags}
+            end
+
+            for name, outboundT in pairs(self.Levels[#self.Levels]) do
+                local ikey = String.FindKey(name)
+                OBT_Param[name] = {terminal:GetItemLevel(ikey, true).RatioAmount, outboundT.Tags}
+            end
+        end
     end
 
     function ProductionControl:UpdateClock(pLine, rkey, clock)
@@ -164,7 +181,20 @@ function ProductionLine:New()
         return recipeInstances
     end
 
-    function ProductionLine:ExploreNodes(callback, ...)
+    function ProductionLine:IterateNodes(nodeI, isIncremental, callback, ...)
+        local direction = isIncremental and "NextNodes" or "PrevNodes"
+        local rkeyI = String.FindKey(nodeI.Name)
+
+        callback(self, nodeI, rkeyI, ...)
+
+        for _, nodeJ in pairs(nodeI[direction]) do
+            self:IterateNodes(nodeJ, isIncremental, callback, ...)
+        end
+
+        return rkeyI
+    end
+
+    function ProductionLine:IterateNodesPair(callback, ...)
         local nodeCounter = 1
 
         for rkeyThis, _ in pairs(self) do
@@ -179,6 +209,12 @@ function ProductionLine:New()
 
         print("  - " .. nodeCounter .. " Production Nodes processed")
         return true
+    end
+
+    function ProductionLine:SetTags(nodeI, rkeyI, tag)
+        table.insert(nodeI.Tags, tag)
+
+        return rkeyI
     end
 
     function ProductionLine:LinkNodes(rkeyThis, rkeyNext, recipeTree)
@@ -205,27 +241,6 @@ function ProductionLine:New()
         end
 
         return math.min(1, itemLinks)
-    end
-
-    function ProductionLine:IterateNodes(rkeyI, isIncremental, callback, ...)
-        if not self[rkeyI] then return end
-        
-        local nodeI = self[rkeyI]
-        local direction = isIncremental and "NextNodes" or "PrevNodes"
-
-        callback(self, nodeI, rkeyI, ...)
-
-        for rkeyJ, _ in pairs(nodeI[direction]) do
-            self:IterateNodes(rkeyJ, isIncremental, callback, ...)
-        end
-
-        return rkeyI
-    end
-
-    function ProductionLine:SetTags(nodeI, rkeyI, tag)
-        table.insert(nodeI.Tags, tag)
-
-        return rkeyI
     end
 
     function ProductionLine:UpdateThroughput(rkey)

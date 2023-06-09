@@ -14,9 +14,11 @@ function Terminal:New() -- Terminal class is a placeholder
             self[isInboundStr][ikey] = {
                 Name = "[" .. isInboundStr .. "]_" .. ikey,
                 Item = item,
+                Shipments = {},
                 Stations = {},
                 PrevNodes = {},
                 NextNodes = {},
+                Tags = {},
                 Level = isInbound and 1 or 100
             }
         end
@@ -27,14 +29,14 @@ function Terminal:New() -- Terminal class is a placeholder
     function Terminal:SetProductionTerminal(pLine, rTree)
         local iCounter, oCounter = 0, 0
 
-        for rkey, _ in pairs(pLine) do
+        for rkey, pNode in pairs(pLine) do
             for ikeyIn, inflow in pairs(rTree[rkey].Inflows) do
                 if not pLine:isInChain(ikeyIn, true) then
                     local terminal = self:NewNode(inflow.Item, true)
 
                     pLine[rkey].PrevNodes[terminal.Name] = terminal
-                    pLine:IterateNodes(rkey, true, pLine.SetTags, terminal.Name)
-                    table.insert(self.IBT[ikeyIn].NextNodes, pLine[rkey])
+                    pLine:IterateNodes(pNode, true, pLine.SetTags, terminal.Name)
+                    table.insert(self.IBT[ikeyIn].NextNodes, pNode)
                     
                     iCounter = iCounter + 1
                 end
@@ -44,8 +46,8 @@ function Terminal:New() -- Terminal class is a placeholder
                     local terminal = self:NewNode(outflow.Item, false)
 
                     pLine[rkey].NextNodes[terminal.Name] = terminal
-                    pLine:IterateNodes(rkey, false, pLine.SetTags, terminal.Name)
-                    table.insert(self.OBT[ikeyOut].PrevNodes, pLine[rkey])
+                    pLine:IterateNodes(pNode, false, pLine.SetTags, terminal.Name)
+                    table.insert(self.OBT[ikeyOut].PrevNodes, pNode)
 
                     oCounter = oCounter + 1
                 end
