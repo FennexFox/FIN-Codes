@@ -113,16 +113,26 @@ function ProductionControl:New(doInitialize, doPrint)
         while true do
             event.pull(1)
 
-            local IBT_Param, OBT_Param = {}, {}
-            for name, inboundT in pairs(self.Levels[1]) do
-                local ikey = String.FindKey(name)
-                IBT_Param[name] = {math.min(1, terminal:GetItemLevel(ikey, true).RatioAmount * 24), inboundT.Tags}
+            local itemLevels = terminal:GetItemLevels()
+
+            for ikey, iLevel in pairs(itemLevels.IBT) do
+                local ratioAmount = math.min(1, iLevel.RatioAmount * 24)
+                productionLine:IterateNodes(terminal.IBT[ikey], true, productionLine.SetClock1, ratioAmount)
             end
 
-            for name, outboundT in pairs(self.Levels[#self.Levels]) do
-                local ikey = String.FindKey(name)
-                OBT_Param[name] = {terminal:GetItemLevel(ikey, true).RatioAmount, outboundT.Tags}
+            for ikey, iLevel in pairs(itemLevels.OBT) do
+                local ratioAmount, tag = math.max(0.8, iLevel.RatioAmount), "[OBT]_" .. ikey
+                if ratioAmount > 0.8 then
+                    ratioAmount = 1 - (ratioAmount - 0.8) / 0.2
+                elseif ratioAmount < 0.2 then
+                    ratioAmount = math.max(2.5, 0.2 / ratioAmount)
+                else break
+                end
+                
+                productionLine:IterateNodes(terminal.OBT[ikey], false, productionLine.SetClock2, ratioAmount, {tag})
             end
+
+            for rkey, _ in pairs(productionLine) do productionLine:UpdateClock(rkey) end
         end
     end
 
@@ -297,6 +307,36 @@ function ProductionLine:New()
         end
 
         return isInChain
+    end
+
+    function ProductionLine:SetClock1(nodeI, rkeyI, clock)
+        if not self[rkeyI] then return end
+        nodeI.Clock = clock
+    end
+
+    function ProductionLine:SetClock2(nodeI, rkeyI, clock, tags)
+        if not #self[rkeyI].Tags > 0 then return end
+        local tagsChecked = {}
+
+        for _, tag1 in pairs(nodeI.Tags) do
+            local isTags = false
+            tagsChecked[tag1] = true
+            for _, tag2 in pairs(tags) do
+                if tag1 == tag2 then isTags = true end
+            end
+            if isTags == false then return end
+        end
+
+        for _, tag2 in pairs(tags) do
+            if tagsChecked[tag2] == true then break end
+            local isTags = false
+            for _, tag1 in pairs(nodeI.Tags) do
+                if tag1 == tag2 then isTags = true end
+            end
+            if isTags == false then return end
+        end
+
+        nodeI.Clock = clock
     end
 
     function ProductionLine:UpdateClock(rkey)

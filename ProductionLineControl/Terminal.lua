@@ -84,8 +84,7 @@ function Terminal:New() -- Terminal class is a placeholder
         end
     end
 
-    function Terminal:GetItemLevel(ikey, isInbound)
-        local isInboundStr = isInbound and "IBT" or "OBT"
+    function Terminal:GetItemLevel(ikey, isInboundStr)
         local itemLevel = {
             StockAmount = 0,
             StockStack = 0,
@@ -107,6 +106,21 @@ function Terminal:New() -- Terminal class is a placeholder
         end
 
         return itemLevel
+    end
+
+    function Terminal:GetItemLevels()
+        local itemLevels = {IBT = {}, OBT = {}}
+        for isInboundStr, terminals in pairs(self) do
+            for ikey, _ in pairs(terminals) do
+                itemLevels[isInboundStr][ikey] = self:GetItemLevel(ikey, isInboundStr)
+            end
+        end
+
+        return itemLevels
+    end
+
+    function Terminal:Main()
+
     end
 
     setmetatable(instance, {__index = self})

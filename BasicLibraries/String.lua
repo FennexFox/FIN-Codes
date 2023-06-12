@@ -27,7 +27,7 @@ function String.KeyGenerator(name)
 end
 
 function String.FindKey(string)
-    local key = string.sub(string, string.find(string, "_" + 1))
+    local key = string.sub(string, string.find(string, "_") + 1)
 
     return key
 end
