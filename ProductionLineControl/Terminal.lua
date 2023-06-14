@@ -8,7 +8,7 @@ function Terminal:New() -- Terminal class is a placeholder
 
     function Terminal:NewNode(item, isInbound)
         local isInboundStr, isNew = isInbound and "IBT" or "OBT", false
-        local ikey = String.KeyGenerator(item.Name)
+        local ikey = String.ItemKeyGenerator(item)
 
         if not self[isInboundStr][ikey] then
             self[isInboundStr][ikey] = {
@@ -18,6 +18,7 @@ function Terminal:New() -- Terminal class is a placeholder
                 Stations = {},
                 PrevNodes = {},
                 NextNodes = {},
+                Counters = {},
                 Tags = {},
                 Level = isInbound and 1 or 100
             }
@@ -54,30 +55,19 @@ function Terminal:New() -- Terminal class is a placeholder
             end
         end
 
-        self:RegisterStations("DockingStation")
-        self:RegisterStations("TrainPlatformCargo")
-        self:RegisterStations("DroneStation")
+        self:RegisterStations()
 
         print("\n  - Logistics Terminal Set: " .. iCounter .. " IBT(s) and " .. oCounter .. " OBT(s)") return true
     end
 
-    function Terminal:RegisterStations(stationClass)
-        local stationsA = component.findComponent(findClass(stationClass))
-        if not stationsA[1] then return end
-
-        local stationsT = {}
-        for _, sA in pairs(stationsA) do stationsT[sA] = true end
-
+    function Terminal:RegisterStations()
         for isInbound, stations in pairs(self) do
-            local isLoad = (isInbound == "OBT")
             for ikey, terminal in pairs(stations) do
-                local stationsI = component.findComponent(ikey)
+                local stationsI = component.findComponent(isInbound, ikey)
                 for _, sI in pairs (stationsI) do
-                    if stationsT[sI] then
-                        local station = component.proxy(sI)
-                        station.isLoadMode = isLoad
-                        table.insert(self[isInbound][ikey].Stations, station)
-                    end
+                    local station = component.proxy(sI)
+                    station.isLoadMode = (isInbound == "OBT")
+                    table.insert(self[isInbound][ikey].Stations, station)
                 end
                 assert(#self[isInbound][ikey].Stations > 0, terminal.Name .. " has no stations!")
             end

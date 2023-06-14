@@ -1,33 +1,46 @@
 String = {}
--- String.Keys = {["Alternate: "] = "A_ ", ["Iron"] = "Irn ", ["Copper"] = "Cpr ", ["Ingot"] = "Igt ", ["Smart"] = "Smrt ", ["Automated"] = "Atm "}
-
-function String.addLine(string, line)
-    if string == {} then string = line else string = string .. "\n" .. line end
-    return string
-end
 
 function String.KeyGenerator(name)
-    local key = name
+    local key, temp = name, {}
 
-    key = string.gsub(key, "Alternate: ", "Alt_ ")
-    key = string.gsub(key, "Reinforced", "Reinf ")
-    key = string.gsub(key, "Rotor", "Rtr ")
-    key = string.gsub(key, "Iron", "Fe ")
-    key = string.gsub(key, "Ore", "O ")
-    key = string.gsub(key, "Copper", "Cu ")
-    key = string.gsub(key, "Ingot", "Igt ")
-    key = string.gsub(key, "Smart", "Smrt ")
-    key = string.gsub(key, "Automated", "Atm ")
-    key = string.gsub(key, "Screw", "Scr ")
-    key = string.gsub(key, "Plate", "Plt ")
-    key = string.gsub(key, "Plating", "Plt ")
+    local patterns = {
+        {"Alternate: ", "/Alt_ "},
+        {"Ore", "/O"},
+        {"Iron", "/Fe"},
+        {"Copper", "/Cu"},
+        {"Almuinum", "/Al"},
+        {"Almuina", "/Al"},
+        {"Utranium", "/U"},
+        {"Plutonium", "/Pu"},
+    }
 
-    key = string.gsub(key, " ", "")
+    for _, pattern in ipairs(patterns) do
+        key = string.gsub(key, pattern[1], pattern[2])
+    end
+
+    for word in key:gmatch("%S+") do
+        local firstLetter, restOfWord = word:sub(1, 1), word:sub(2)
+        if firstLetter == "/" then firstLetter = ""
+        else restOfWord = restOfWord:gsub("[AEIOUaeiou]", "")
+        end
+
+        table.insert(temp, firstLetter .. restOfWord)
+    end
+    
+    local key = table.concat(temp)
     return key
 end
 
-function String.FindKey(string)
-    local key = string.sub(string, string.find(string, "_") + 1)
+function String.ItemKeyGenerator(itemType)
+    local name, key = String.KeyGenerator(itemType.name), ""
+    local size = string.format("%02.0f", itemType.max/50)
 
-    return key
+    for v in name:gmatch("%u%U?%U?") do
+        local keyLen = string.len(key:match("%u+") or "")
+        if keyLen > 3 then break end
+        key = key:sub(1, keyLen) .. v
+    end
+
+    key = key:upper() .. "xx"
+    return size .. key:sub(1, 3)
 end

@@ -53,7 +53,7 @@ function RecipeTree:New()
     end
     
     function RecipeTree:SetThroughputMatrix(recipeNode, itemAmount, isIngredient)
-        local rkey, ikey, fkey = String.FindKey(recipeNode.Name), String.KeyGenerator(itemAmount.Type.Name), ""
+        local rkey, ikey, fkey = String.KeyGenerator(recipeNode.Recipe.name), String.ItemKeyGenerator(itemAmount.Type), ""
         if isIngredient then fkey = "Inflows" else fkey = "Outflows" end
 
         self[rkey][fkey][ikey] = {Item = itemAmount.Type, Amount = itemAmount.Amount, Duration = recipeNode.Duration}

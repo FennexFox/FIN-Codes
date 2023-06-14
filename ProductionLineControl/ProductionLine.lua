@@ -165,6 +165,7 @@ function ProductionLine:New()
                 Demands = {},
                 Supplies = {},
                 Tags = {},
+                Counters = {},
                 Level = 1
             }
         else
@@ -193,7 +194,7 @@ function ProductionLine:New()
 
     function ProductionLine:IterateNodes(nodeI, isIncremental, callback, ...)
         local direction = isIncremental and "NextNodes" or "PrevNodes"
-        local rkeyI = String.FindKey(nodeI.Name)
+        local rkeyI = nodeI.Name:sub(6)
 
         callback(self, nodeI, rkeyI, ...)
 
@@ -234,11 +235,11 @@ function ProductionLine:New()
             for ikey2, flowPull in pairs(recipeTree[rkeyNext].Inflows) do
                 if ikey1 == ikey2 then
                     self[rkeyThis].NextNodes[rkeyNext], self[rkeyThis].Supplies[rkeyNext] = self[rkeyNext], flowPush
-                    self[rkeyThis].Supplies[rkeyNext].iKey = String.KeyGenerator(flowPush.Item.Name)
+                    self[rkeyThis].Supplies[rkeyNext].iKey = String.ItemKeyGenerator(flowPush.Item)
                     self:UpdateThroughput(rkeyThis)
 
                     self[rkeyNext].PrevNodes[rkeyThis], self[rkeyNext].Demands[rkeyThis] = self[rkeyThis], flowPull
-                    self[rkeyNext].Demands[rkeyThis].iKey = String.KeyGenerator(flowPull.Item.Name)
+                    self[rkeyNext].Demands[rkeyThis].iKey = String.ItemKeyGenerator(flowPull.Item)
                     self:UpdateThroughput(rkeyNext)
 
                     itemLinks = itemLinks + 1
