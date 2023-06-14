@@ -6,14 +6,13 @@ Terminal = {}
 function Terminal:New() -- Terminal class is a placeholder
     local instance = {IBT = {}, OBT = {}}
 
-    function Terminal:NewNode(item, isInbound)
+    function Terminal:NewNode(itemType, isInbound)
         local isInboundStr, isNew = isInbound and "IBT" or "OBT", false
-        local ikey = String.ItemKeyGenerator(item)
+        local ikey = String.ItemKeyGenerator(itemType)
 
         if not self[isInboundStr][ikey] then
             self[isInboundStr][ikey] = {
                 Name = "[" .. isInboundStr .. "]_" .. ikey,
-                Item = item,
                 Shipments = {},
                 Stations = {},
                 PrevNodes = {},

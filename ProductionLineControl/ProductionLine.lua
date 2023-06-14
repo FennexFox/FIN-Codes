@@ -165,7 +165,6 @@ function ProductionLine:New()
                 Demands = {},
                 Supplies = {},
                 Tags = {},
-                Counters = {},
                 Level = 1
             }
         else
@@ -194,7 +193,8 @@ function ProductionLine:New()
 
     function ProductionLine:IterateNodes(nodeI, isIncremental, callback, ...)
         local direction = isIncremental and "NextNodes" or "PrevNodes"
-        local rkeyI = nodeI.Name:sub(6)
+        local _, rkeyI = String.NameParser(nodeI.Name)
+
 
         callback(self, nodeI, rkeyI, ...)
 
@@ -234,12 +234,15 @@ function ProductionLine:New()
         for ikey1, flowPush in pairs(recipeTree[rkeyThis].Outflows) do
             for ikey2, flowPull in pairs(recipeTree[rkeyNext].Inflows) do
                 if ikey1 == ikey2 then
-                    self[rkeyThis].NextNodes[rkeyNext], self[rkeyThis].Supplies[rkeyNext] = self[rkeyNext], flowPush
-                    self[rkeyThis].Supplies[rkeyNext].iKey = String.ItemKeyGenerator(flowPush.Item)
+                    if itemLinks == 0 then
+                        self[rkeyThis].NextNodes[rkeyNext], self[rkeyThis].Supplies[rkeyNext] = self[rkeyNext], {}
+                        self[rkeyNext].PrevNodes[rkeyThis], self[rkeyNext].Demands[rkeyThis] = self[rkeyThis], {}
+                    end
+                    
+                    self[rkeyThis].Supplies[rkeyNext][ikey1] = flowPush
+                    self[rkeyNext].Demands[rkeyThis][ikey2] = flowPull
+                    
                     self:UpdateThroughput(rkeyThis)
-
-                    self[rkeyNext].PrevNodes[rkeyThis], self[rkeyNext].Demands[rkeyThis] = self[rkeyThis], flowPull
-                    self[rkeyNext].Demands[rkeyThis].iKey = String.ItemKeyGenerator(flowPull.Item)
                     self:UpdateThroughput(rkeyNext)
 
                     itemLinks = itemLinks + 1
@@ -298,12 +301,14 @@ function ProductionLine:New()
         return DPM
     end
 
-    function ProductionLine:isInChain(ikey, isInflow)
+    function ProductionLine:isInChain(ikeyC, isInflow)
         local isInChain, direction = false, isInflow and "Demands" or "Supplies"
 
         for _, pNode in pairs(self) do
-            for _, throughput in pairs(pNode[direction]) do
-                if throughput.iKey == ikey then isInChain = true end
+            for _, throughputs in pairs(pNode[direction]) do
+                for ikeyT, _ in pairs(throughputs) do
+                    if ikeyT == ikeyC then isInChain = true end
+                end
             end
         end
 

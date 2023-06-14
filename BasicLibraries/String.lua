@@ -44,3 +44,10 @@ function String.ItemKeyGenerator(itemType)
     key = key:upper() .. "xx"
     return size .. key:sub(1, 3)
 end
+
+function String.NameParser(name)
+    local type = name:gsub("%[(.*)%]_(.*)", "%1")
+    local key = name:gsub("%[(.*)%]_(.*)", "%2")
+    
+    return type, key
+end
