@@ -22,7 +22,8 @@ function RecipeTree:New()
                 Duration = recipe.Duration,
                 Inflows = {},
                 Outflows = {},
-                Recipe = recipe
+                Recipe = recipe,
+                Tags = {}
             }
 
             for _, i in pairs(ingredients) do

@@ -7,19 +7,18 @@ function Terminal:New() -- Terminal class is a placeholder
     local instance = {IBT = {}, OBT = {}}
 
     function Terminal:NewNode(itemType, isInbound)
-        local isInboundStr, isNew = isInbound and "IBT" or "OBT", false
-        local ikey = String.ItemKeyGenerator(itemType)
+        local isNew, ikey = false, String.ItemKeyGenerator(itemType)
+        local isInboundStr = isInbound and "IBT" or "OBT"
 
         if not self[isInboundStr][ikey] then
             self[isInboundStr][ikey] = {
                 Name = "[" .. isInboundStr .. "]_" .. ikey,
-                Shipments = {},
+                Shipments = {Item = itemType},
                 Stations = {},
                 PrevNodes = {},
                 NextNodes = {},
-                Counters = {},
+                Throughput = {},
                 Tags = {},
-                Level = isInbound and 1 or 100
             }
         end
 
@@ -28,28 +27,21 @@ function Terminal:New() -- Terminal class is a placeholder
     
     function Terminal:SetProductionTerminal(pLine, rTree)
         local iCounter, oCounter = 0, 0
+        local direction, nodeOther = {"Inflows", "Outflows"}, {"NextNodes", "PrevNodes"}
 
-        for rkey, pNode in pairs(pLine) do
-            for ikeyIn, inflow in pairs(rTree[rkey].Inflows) do
-                if not pLine:isInChain(ikeyIn, true) then
-                    local terminal = self:NewNode(inflow.Item, true)
+        for dir1, dir2 in pairs(direction) do
+            local bool = (dir1 == 1)
+            for rkeyOther, pNode in pairs(pLine) do
+                for ikey, flow in pairs(rTree[rkeyOther][dir2]) do
+                    if not pLine:isInChain(ikey, bool) then
+                        local terminal = self:NewNode(flow.Item, bool)
+                        local type, _ = String.NameParser(terminal.Name)
 
-                    pLine[rkey].PrevNodes[terminal.Name] = terminal
-                    pLine:IterateNodes(pNode, true, pLine.SetTags, terminal.Name)
-                    table.insert(self.IBT[ikeyIn].NextNodes, pNode)
-                    
-                    iCounter = iCounter + 1
-                end
-            end
-            for ikeyOut, outflow in pairs(rTree[rkey].Outflows) do
-                if not pLine:isInChain(ikeyOut, false) then
-                    local terminal = self:NewNode(outflow.Item, false)
+                        self[type][ikey][nodeOther[dir1]][rkeyOther] = pNode
+                        self[type][ikey].Throughput[rkeyOther] = {}
 
-                    pLine[rkey].NextNodes[terminal.Name] = terminal
-                    pLine:IterateNodes(pNode, false, pLine.SetTags, terminal.Name)
-                    table.insert(self.OBT[ikeyOut].PrevNodes, pNode)
-
-                    oCounter = oCounter + 1
+                        if bool then iCounter = iCounter + 1 else oCounter = oCounter + 1 end
+                    end
                 end
             end
         end
@@ -73,6 +65,27 @@ function Terminal:New() -- Terminal class is a placeholder
         end
     end
 
+    function Terminal:SetTags(rkeyI, tag, isInboundStr)
+        table.insert(self[isInboundStr][rkeyI].Tags, tag)
+    end
+
+    function Terminal:SetCounters(ikey, type)
+        local terminal = self[type][ikey]
+        local isInbound = (type == "IBT")
+        local nodeOthers = isInbound and terminal.NextNodes or terminal.PrevNodes
+
+        for rkeyOther, nodeOther in pairs(nodeOthers) do
+            local tCounters = component.proxy(component.findComponent(ikey, type, rkeyOther))
+            self[type][ikey].Throughput[rkeyOther] = ThroughputCounter:New(tCounters, terminal, nodeOther, isInbound)
+            print("    - " .. terminal.Name .. " got " .. #tCounters .. " " .. ikey .. " throughput counter(s)")
+        end
+    end
+--[[
+    function Terminal:UpdateThroughput(ikey, type)
+        self[type][ikey].Throughput.Amount = 0
+        self[type][ikey].Throughput.Duration = 0
+    end
+]]--
     function Terminal:GetItemLevel(ikey, isInboundStr)
         local itemLevel = {
             StockAmount = 0,
