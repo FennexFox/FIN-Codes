@@ -266,31 +266,30 @@ function ProductionLine:New()
         table.insert(self[rkeyI].Tags, tag)
     end
 
-    function ProductionLine:LinkNodes(keyThis, nodeOther, isInflow, recipeTree)
+    function ProductionLine:LinkNodes(keyThis, nodeOther, ikeyOther, isInflow)
         local type, keyOther = String.NameParser(nodeOther.Name)
         local flow = isInflow and {"PrevNodes", "Demands", "Inflows"} or {"NextNodes", "Supplies", "Outflows"}
 
         if type == "PN" then
-            self[keyThis][flow[1]][keyOther], self[keyThis][flow[2]][keyOther] = self[keyOther], {}
+            self[keyThis][flow[1]][keyOther], self[keyThis][flow[2]][ikeyOther] = self[keyOther], {}
         else
-            self[keyThis][flow[1]][nodeOther.Name] = nodeOther
-            self[keyThis][flow[2]][type][keyOther] = recipeTree[keyThis][flow[3]][keyOther]
+            self[keyThis][flow[1]][nodeOther.Name], self[keyThis][flow[2]][type][ikeyOther] = nodeOther, {}
         end
     end
 
     function ProductionLine:LinkThroughputs(rkeyThis, rkeyNext, recipeTree)
         local itemLinks = 0
 
-        for ikey1, flowPush in pairs(recipeTree[rkeyThis].Outflows) do
-            for ikey2, flowPull in pairs(recipeTree[rkeyNext].Inflows) do
-                if ikey1 == ikey2 then
+        for ikeyPush, flowPush in pairs(recipeTree[rkeyThis].Outflows) do
+            for ikeyPull, flowPull in pairs(recipeTree[rkeyNext].Inflows) do
+                if ikeyPush == ikeyPull then
                     if itemLinks == 0 then
-                        self:LinkNodes(rkeyThis, self[rkeyNext], false, recipeTree)
-                        self:LinkNodes(rkeyNext, self[rkeyThis], true, recipeTree)
+                        self:LinkNodes(rkeyThis, self[rkeyNext], ikeyPush, false)
+                        self:LinkNodes(rkeyNext, self[rkeyThis], ikeyPull, true)
                     end
                     
-                    self[rkeyThis].Supplies[rkeyNext][ikey1] = flowPush
-                    self[rkeyNext].Demands[rkeyThis][ikey2] = flowPull
+                    self[rkeyThis].Supplies[rkeyNext][ikeyPush] = flowPush
+                    self[rkeyNext].Demands[rkeyThis][ikeyPull] = flowPull
 
                     itemLinks = itemLinks + 1
                 end
@@ -307,15 +306,16 @@ function ProductionLine:New()
     function ProductionLine:SetCounters(keyThis)
         local pNode, direction = self[keyThis], {PrevNodes = "Demands", NextNodes = "Supplies"}
 
-        for dir1, dir2 in pairs(direction) do
-            local dir3 = dir1 == "PrevNodes" and {"NextNodes", "from"} or {"PrevNodes", "to"}
-            for _, nodeOther in pairs(pNode[dir1]) do
-                local key1, key2 = String.NameParser(nodeOther.Name)
-                if key1 ~= "PN" then key2 = nodeOther.Name else key1 = key2 end
-                for ikey, _ in pairs(pNode[dir1][key2][dir3[1]]) do
-                    local tCounters = component.proxy(component.findComponent(keyThis, ikey, key1))
-                    self[keyThis][dir2][key1][ikey] = ThroughputCounter:New(tCounters, pNode, nodeOther, dir2 == "Demands")
-                    print("    - " .. pNode.Name .. " got " .. #tCounters .. " " .. ikey .. " counter(s) " .. dir3[2] .. " " .. nodeOther.Name)
+        for nodeOthers, throughputs in pairs(direction) do
+            local dir3 = nodeOthers == "PrevNodes" and "from" or "to"
+            for keyOther, nodeOther in pairs(pNode[nodeOthers]) do
+                local type, _ = String.NameParser(nodeOther.Name)
+                if type ~= "PN" then keyOther = type end
+
+                for ikey, _ in pairs(pNode[throughputs][keyOther]) do
+                    local tCounters = component.proxy(component.findComponent(keyThis, keyOther, ikey))
+                    self[keyThis][throughputs][keyOther][ikey] = ThroughputCounter:New(tCounters, pNode, nodeOther, throughputs == "Demands")
+                    print("    - " .. pNode.Name .. " got " .. #tCounters .. " " .. ikey .. " counter(s) " .. dir3 .. " " .. nodeOther.Name)
                 end
             end
         end
