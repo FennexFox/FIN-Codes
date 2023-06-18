@@ -54,7 +54,7 @@ function Terminal:New() -- Terminal class is a placeholder
     function Terminal:RegisterStations()
         for isInbound, stations in pairs(self) do
             for ikey, terminal in pairs(stations) do
-                local stationsI = component.findComponent(isInbound, ikey)
+                local stationsI = component.findComponent(String.NickQueryComposer(isInbound, ikey))
                 for _, sI in pairs (stationsI) do
                     local station = component.proxy(sI)
                     station.isLoadMode = (isInbound == "OBT")
@@ -71,12 +71,12 @@ function Terminal:New() -- Terminal class is a placeholder
 
     function Terminal:SetCounters(ikey, type)
         local terminal = self[type][ikey]
-        local isInbound = (type == "IBT")
+        local keyThis = (type == "IBT") and "Inbound" or "Outbound"
         local nodeOthers = isInbound and terminal.NextNodes or terminal.PrevNodes
 
-        for rkeyOther, nodeOther in pairs(nodeOthers) do
-            local tCounters = component.proxy(component.findComponent(ikey, type, rkeyOther))
-            self[type][ikey].Throughput[rkeyOther] = ThroughputCounter:New(tCounters, terminal, nodeOther, isInbound)
+        for keyOther, nodeOther in pairs(nodeOthers) do
+            local tCounters = component.proxy(component.findComponent(String.NickQueryComposer(ikey, keyThis, keyOther)))
+            self[type][ikey].Throughput[keyOther] = ThroughputCounter:New(tCounters, terminal, nodeOther, type == "IBT")
             print("    - " .. terminal.Name .. " got " .. #tCounters .. " " .. ikey .. " throughput counter(s)")
         end
     end

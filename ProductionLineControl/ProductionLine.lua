@@ -132,7 +132,7 @@ function ProductionControl:New(doInitialize, doPrint)
                     local string = ""
 
                     for _, v in pairs(IBT.NextNodes) do string = v.Name .. ", " .. string end
-                    string = string.sub(string, 1, -3)
+                    string = string:gsub("(.+),%s*", "%1")
 
                     print("    * " .. pKey .. " has " .. #IBT.Stations .. " terminal(s), is before: " .. string)
                 end
@@ -141,7 +141,7 @@ function ProductionControl:New(doInitialize, doPrint)
                     local string = ""
 
                     for _, v in pairs(OBT.PrevNodes) do string = v.Name .. ", " .. string end
-                    string = string.sub(string, 1, -3)
+                    string = string:gsub("(.+),%s*", "%1")
 
                     print("    * " .. pKey .. " has " .. #OBT.Stations .. " terminal(s), is after: " .. string)
                 end
@@ -152,8 +152,8 @@ function ProductionControl:New(doInitialize, doPrint)
                     for _, v in pairs(pNode.PrevNodes) do prevString = v.Name .. ", " .. prevString end
                     for _, w in pairs(pNode.NextNodes) do nextString = w.Name .. ", " .. nextString end
 
-                    prevString = string.sub(prevString, 1, -3)
-                    nextString = string.sub(nextString, 1, -3)
+                    prevString = prevString:gsub("(.+),%s*", "%1")
+                    nextString = nextString:gsub("(.+),%s*", "%1")
 
                     print("    * " .. pKey .. " has " .. #pNode.Machines .. " machine(s), is")
                     print("       after: " .. prevString .. "\n       before: " .. nextString)
@@ -271,9 +271,9 @@ function ProductionLine:New()
         local flow = isInflow and {"PrevNodes", "Demands", "Inflows"} or {"NextNodes", "Supplies", "Outflows"}
 
         if type == "PN" then
-            self[keyThis][flow[1]][keyOther], self[keyThis][flow[2]][ikeyOther] = self[keyOther], {}
+            self[keyThis][flow[1]][keyOther], self[keyThis][flow[2]][keyOther] = self[keyOther], {}
         else
-            self[keyThis][flow[1]][nodeOther.Name], self[keyThis][flow[2]][type][ikeyOther] = nodeOther, {}
+            self[keyThis][flow[1]][nodeOther.Name], self[keyThis][flow[2]][type] = nodeOther, {}
         end
     end
 
@@ -313,7 +313,7 @@ function ProductionLine:New()
                 if type ~= "PN" then keyOther = type end
 
                 for ikey, _ in pairs(pNode[throughputs][keyOther]) do
-                    local tCounters = component.proxy(component.findComponent(keyThis, keyOther, ikey))
+                    local tCounters = component.proxy(component.findComponent(String.NickQueryComposer(keyThis, keyOther, ikey)))
                     self[keyThis][throughputs][keyOther][ikey] = ThroughputCounter:New(tCounters, pNode, nodeOther, throughputs == "Demands")
                     print("    - " .. pNode.Name .. " got " .. #tCounters .. " " .. ikey .. " counter(s) " .. dir3 .. " " .. nodeOther.Name)
                 end

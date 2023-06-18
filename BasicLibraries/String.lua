@@ -51,3 +51,10 @@ function String.NameParser(name)
     
     return type, key
 end
+
+function String.NickQueryComposer(...)
+    local query = ""
+    for _, v in pairs({...}) do query = query .. " " .. v end
+
+    return query:gsub("^%s*(.+)", "%1")
+end
