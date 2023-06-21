@@ -19,7 +19,8 @@ function ProductionControl:New(doInitialize, doPrint)
 
             ProductionControl:InitializeNodes(productionLine, recipeTree, machineIDs)
             ProductionControl:LinkNodes(productionLine, recipeTree)
-            ProductionControl:SetTerminal(productionLine, recipeTree, terminals)
+            ProductionControl:SetTerminals(productionLine, recipeTree, terminals)
+            ProductionControl:LinkTerminals(productionLine, terminals)
             ProductionControl:SortNodes(1, terminals)
             ProductionControl:IterateAllNodes(self.SetCounters)
 
@@ -37,17 +38,21 @@ function ProductionControl:New(doInitialize, doPrint)
         pLine:IterateNodesPair(pLine.LinkThroughputs, rTree)
     end
 
-    function ProductionControl:SetTerminal(pLine, rTree, terminal)
+    function ProductionControl:SetTerminals(pLine, rTree, terminal)
         terminal:SetProductionTerminal(pLine, rTree)
         self.Levels[1] = self.Levels[1] or {}
+    end
+
+    function ProductionControl:LinkTerminals(pLine, terminal)
         for isInboundsStr, terminals in pairs(terminal) do
             local isInbound = (isInboundsStr == "IBT")
-            for tKey, terminal in pairs(terminals) do
-                local tag, nodeOthers = terminal.Name, isInbound and {"NextNodes", "PrevNodes"} or {"PrevNodes", "NextNodes"}
-                self:IterateInLine(terminal, isInbound, ProductionControl.SetTags, tag)
-                if isInbound then self.Levels[1][tag] = terminal end
-                for pKey, _ in pairs(terminal[nodeOthers[1]]) do
-                    pLine:LinkNodes(pKey, terminal, isInbound, rTree)
+            for ikey, terminalNode in pairs(terminals) do
+                local name, flow = terminalNode.Name, isInbound and {"NextNodes", "Demands"} or {"PrevNodes", "Supplies"}
+                self:IterateInLine(terminalNode, isInbound, ProductionControl.SetTags, name)
+                if isInbound then self.Levels[1][ikey] = terminalNode end
+                for pKey, _ in pairs(terminalNode[flow[1]]) do
+                    pLine:LinkNodes(pKey, terminalNode, isInbound)
+                    pLine[pKey][flow[2]][isInboundsStr][ikey] = {}
                 end
             end
         end
@@ -226,6 +231,8 @@ function ProductionLine:New()
             isNew = false
         end
 
+        machineProxy.nick = name .. " " .. string.format("%02d", #self[rkey].Machines)
+
         return isNew
     end
 
@@ -266,14 +273,15 @@ function ProductionLine:New()
         table.insert(self[rkeyI].Tags, tag)
     end
 
-    function ProductionLine:LinkNodes(keyThis, nodeOther, ikeyOther, isInflow)
-        local type, keyOther = String.NameParser(nodeOther.Name)
-        local flow = isInflow and {"PrevNodes", "Demands", "Inflows"} or {"NextNodes", "Supplies", "Outflows"}
+    function ProductionLine:LinkNodes(keyThis, nodeOther, isInflow)
+        local _, keyOther = String.NameParser(nodeOther.Name)
+        local flow = isInflow and {"PrevNodes", "Demands"} or {"NextNodes", "Supplies"}
 
+        self[keyThis][flow[1]][keyOther] = nodeOther
         if type == "PN" then
-            self[keyThis][flow[1]][keyOther], self[keyThis][flow[2]][keyOther] = self[keyOther], {}
+            self[keyThis][flow[2]][keyOther] = {}
         else
-            self[keyThis][flow[1]][nodeOther.Name], self[keyThis][flow[2]][type] = nodeOther, {}
+            self[keyThis][flow[2]][type] = {}
         end
     end
 
@@ -284,8 +292,8 @@ function ProductionLine:New()
             for ikeyPull, flowPull in pairs(recipeTree[rkeyNext].Inflows) do
                 if ikeyPush == ikeyPull then
                     if itemLinks == 0 then
-                        self:LinkNodes(rkeyThis, self[rkeyNext], ikeyPush, false)
-                        self:LinkNodes(rkeyNext, self[rkeyThis], ikeyPull, true)
+                        self:LinkNodes(rkeyThis, self[rkeyNext], false)
+                        self:LinkNodes(rkeyNext, self[rkeyThis], true)
                     end
                     
                     self[rkeyThis].Supplies[rkeyNext][ikeyPush] = flowPush
@@ -310,11 +318,13 @@ function ProductionLine:New()
             local dir3 = nodeOthers == "PrevNodes" and "from" or "to"
             for keyOther, nodeOther in pairs(pNode[nodeOthers]) do
                 local type, _ = String.NameParser(nodeOther.Name)
+                local from, to = nodeOther, pNode
                 if type ~= "PN" then keyOther = type end
+                if nodeOthers == "NextNodes" then from, to = to, from end
 
                 for ikey, _ in pairs(pNode[throughputs][keyOther]) do
-                    local tCounters = component.proxy(component.findComponent(String.NickQueryComposer(keyThis, keyOther, ikey)))
-                    self[keyThis][throughputs][keyOther][ikey] = ThroughputCounter:New(tCounters, pNode, nodeOther, throughputs == "Demands")
+                    local tCounters = component.proxy(component.findComponent(String.Composer(" ", keyThis, keyOther, ikey)))
+                    self[keyThis][throughputs][keyOther][ikey].Counters = ThroughputCounter:New(tCounters, from, to, ikey)
                     print("    - " .. pNode.Name .. " got " .. #tCounters .. " " .. ikey .. " counter(s) " .. dir3 .. " " .. nodeOther.Name)
                 end
             end
@@ -333,6 +343,7 @@ function ProductionLine:New()
         end
     end
 
+--[[
     function ProductionLine:GetSurplusPerMin(rkey, ikey)
         local push, pull = self[rkey].Supplies[ikey], self:GetDemandPerMin(ikey)
         push = push.Amount / push.Duration
@@ -363,7 +374,7 @@ function ProductionLine:New()
 
         return DPM
     end
-
+]]--
     function ProductionLine:isInChain(ikeyC, isInflow)
         local isInChain, direction = false, isInflow and "Demands" or "Supplies"
 
@@ -377,7 +388,7 @@ function ProductionLine:New()
 
         return isInChain
     end
-
+--[[
     function ProductionLine:SetClock1(nodeI, rkeyI, clock)
         if not self[rkeyI] then return end
         nodeI.Clock = clock
@@ -407,7 +418,7 @@ function ProductionLine:New()
 
         nodeI.Clock = clock
     end
-
+]]--
     function ProductionLine:UpdateClock(rkey)
         for _, machine in pairs(self[rkey].Machines) do machine.potential = self[rkey].Clock end
     end

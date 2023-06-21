@@ -52,15 +52,16 @@ function Terminal:New() -- Terminal class is a placeholder
     end
 
     function Terminal:RegisterStations()
-        for isInbound, stations in pairs(self) do
+        for isInboundStr, stations in pairs(self) do
             for ikey, terminal in pairs(stations) do
-                local stationsI = component.findComponent(String.NickQueryComposer(isInbound, ikey))
-                for _, sI in pairs (stationsI) do
+                local stationsI = component.findComponent(String.Composer(" ", "terminal", isInboundStr, ikey))
+                for i, sI in ipairs (stationsI) do
                     local station = component.proxy(sI)
-                    station.isLoadMode = (isInbound == "OBT")
-                    table.insert(self[isInbound][ikey].Stations, station)
+                    station.nick = terminal.Name .. " " .. string.format("%02d", i)
+                    station.isLoadMode = (isInboundStr == "OBT")
+                    table.insert(self[isInboundStr][ikey].Stations, station)
                 end
-                assert(#self[isInbound][ikey].Stations > 0, terminal.Name .. " has no stations!")
+                assert(#self[isInboundStr][ikey].Stations > 0, terminal.Name .. " has no stations!")
             end
         end
     end
@@ -71,21 +72,19 @@ function Terminal:New() -- Terminal class is a placeholder
 
     function Terminal:SetCounters(ikey, type)
         local terminal = self[type][ikey]
-        local keyThis = (type == "IBT") and "Inbound" or "Outbound"
-        local nodeOthers = isInbound and terminal.NextNodes or terminal.PrevNodes
+        local nodeOthers = (type == "IBT") and terminal.NextNodes or terminal.PrevNodes
 
         for keyOther, nodeOther in pairs(nodeOthers) do
-            local tCounters = component.proxy(component.findComponent(String.NickQueryComposer(ikey, keyThis, keyOther)))
-            self[type][ikey].Throughput[keyOther] = ThroughputCounter:New(tCounters, terminal, nodeOther, type == "IBT")
+            local tCounters = component.proxy(component.findComponent(String.Composer(" ", ikey, type, keyOther)))
+            local from, to = terminal, nodeOther
+
+            if type == "OBT" then from, to = to, from end
+
+            self[type][ikey].Throughput[keyOther] = ThroughputCounter:New(tCounters, from, to, ikey)
             print("    - " .. terminal.Name .. " got " .. #tCounters .. " " .. ikey .. " throughput counter(s)")
         end
     end
---[[
-    function Terminal:UpdateThroughput(ikey, type)
-        self[type][ikey].Throughput.Amount = 0
-        self[type][ikey].Throughput.Duration = 0
-    end
-]]--
+
     function Terminal:GetItemLevel(ikey, isInboundStr)
         local itemLevel = {
             StockAmount = 0,
