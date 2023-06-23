@@ -6,9 +6,11 @@ ProductionControl, ProductionLine = {Levels = {}}, {}
 
 function ProductionControl:New(doInitialize, doPrint)
     local instance = {}
-    local recipeTree, productionLine, terminals = {}, {}, {} -- these are private fields, shall not be directly referenced
-    recipeTree = RecipeTree:New() -- This is a clone of RecipeTree from Central DB; should be changed to Fetch()
-    productionLine, terminals = ProductionLine:New(), Terminal:New()
+    setmetatable(instance, {__index = self})
+
+    local privateFields = {} -- these are private fields, shall not be directly referenced
+    privateFields.rTree = RecipeTree:New() -- This is a clone of RecipeTree from Central DB; should be changed to Fetch()
+    privateFields.pLines, privateFields.pTerminals = ProductionLine:New(instance), Terminal:New(instance)
 
     function ProductionControl:Initialize()
         local machineIDs = component.findComponent(findClass("Manufacturer"))
@@ -17,11 +19,10 @@ function ProductionControl:New(doInitialize, doPrint)
         else
             print("\n... Production Line of " .. #machineIDs .. " Machines Initializing ...\n")
 
-            ProductionControl:InitializeNodes(productionLine, recipeTree, machineIDs)
-            ProductionControl:LinkNodes(productionLine, recipeTree)
-            ProductionControl:SetTerminals(productionLine, recipeTree, terminals)
-            ProductionControl:LinkTerminals(productionLine, terminals)
-            ProductionControl:SortNodes(1, terminals)
+            ProductionControl:InitializeNodes(machineIDs)
+            ProductionControl:LinkNodes()
+            ProductionControl:SetTerminals()
+            ProductionControl:SortNodes(1)
             ProductionControl:IterateAllNodes(self.SetCounters)
 
             print("\n... Production Line of " .. #machineIDs .. " Machines Initialized ...\n")
@@ -30,43 +31,42 @@ function ProductionControl:New(doInitialize, doPrint)
         return true
     end
 
-    function  ProductionControl:InitializeNodes(pLine, rTree, machineIDs)
-        pLine:InitializeNodes(machineIDs, rTree)
+    function  ProductionControl:InitializeNodes(machineIDs)
+        privateFields.pLines:InitializeNodes(machineIDs, privateFields.rTree)
     end
 
-    function ProductionControl:LinkNodes(pLine, rTree)
-        pLine:IterateNodesPair(pLine.LinkThroughputs, rTree)
+    function ProductionControl:LinkNodes()
+        local callback = privateFields.pLines.LinkThroughputs
+        privateFields.pLines:IterateNodesPair(callback, privateFields.rTree)
     end
 
-    function ProductionControl:SetTerminals(pLine, rTree, terminal)
-        terminal:SetProductionTerminal(pLine, rTree)
+    function ProductionControl:SetTerminals()
+        local pTerminals = privateFields.pTerminals:SetProductionTerminal(privateFields.pLines, privateFields.rTree)
         self.Levels[1] = self.Levels[1] or {}
-    end
 
-    function ProductionControl:LinkTerminals(pLine, terminal)
-        for isInboundsStr, terminals in pairs(terminal) do
-            local isInbound = (isInboundsStr == "IBT")
+        for type, terminals in pairs(pTerminals) do
+            local isInbound = (type == "IBT")
             for ikey, terminalNode in pairs(terminals) do
                 local name, flow = terminalNode.Name, isInbound and {"NextNodes", "Demands"} or {"PrevNodes", "Supplies"}
-                self:IterateInLine(terminalNode, isInbound, ProductionControl.SetTags, name)
+                self:IterateInLine(terminalNode, isInbound, instance.SetTags, name)
                 if isInbound then self.Levels[1][ikey] = terminalNode end
                 for pKey, _ in pairs(terminalNode[flow[1]]) do
-                    pLine:LinkNodes(pKey, terminalNode, isInbound)
-                    pLine[pKey][flow[2]][isInboundsStr][ikey] = {}
+                    privateFields.pLines:LinkNodes(pKey, terminalNode, isInbound)
+                    privateFields.pLines[pKey][flow[2]][type][ikey] = {}
                 end
             end
         end
     end
 
-    function ProductionControl:SortNodes(i, terminal)
+    function ProductionControl:SortNodes(i)
         local j, isLast = i + 1, true
         self.Levels[j] = self.Levels[j] or {}
 
         for _, iNode in pairs(self.Levels[i]) do
-            for jKey, jNode in pairs(iNode.NextNodes) do
-                local type, _ = String.NameParser(jNode.Name)
-                if type == "OBT" then break
-                elseif type == "IBT" then error("Production Line not Sorted: IBT at Level " .. j .. "!")
+            for _, jNode in pairs(iNode.NextNodes) do
+                local nodeType, _ = String.NameParser(jNode.Name)
+                if nodeType == "OBT" then break
+                elseif nodeType == "IBT" then error("Production Line not Sorted: IBT at Level " .. j .. "!")
                 end
 
                 self.Levels[j][jNode.Name] = jNode
@@ -75,18 +75,18 @@ function ProductionControl:New(doInitialize, doPrint)
         end
 
         if not isLast then
-            self:SortNodes(j, terminal)
+            self:SortNodes(j)
         else
-            for _, outboundT in pairs(terminal.OBT) do self.Levels[j][outboundT.Name] = outboundT end
+            for _, outboundT in pairs(privateFields.pTerminals.OBT) do self.Levels[j][outboundT.Name] = outboundT end
         end
     end
 
-    function ProductionControl:GetNodeTree(type)
+    function ProductionControl:GetNodeTree(nodeType)
         local nodeTree = {}
 
-        if type == "RN" then nodeTree = recipeTree
-        elseif type == "PN" then nodeTree = productionLine
-        else nodeTree = terminals
+        if nodeType == "RN" then nodeTree = privateFields.rTree
+        elseif nodeType == "PN" then nodeTree = privateFields.pLines
+        else nodeTree = privateFields.pTerminals
         end
 
         return nodeTree
@@ -94,10 +94,10 @@ function ProductionControl:New(doInitialize, doPrint)
 
     function ProductionControl:IterateInLine(nodeI, isIncremental, callback, ...)
         local direction = isIncremental and "NextNodes" or "PrevNodes"
-        local type, keyI = String.NameParser(nodeI.Name)
-        local nodeTree = self:GetNodeTree(type)
+        local nodeType, keyI = String.NameParser(nodeI.Name)
+        local nodeTree = self:GetNodeTree(nodeType)
 
-        callback(nodeTree, keyI, type, ...)
+        callback(nodeTree, keyI, nodeType, ...)
 
         for _, nodeJ in pairs(nodeI[direction]) do
             self:IterateInLine(nodeJ, isIncremental, callback, ...)
@@ -107,51 +107,60 @@ function ProductionControl:New(doInitialize, doPrint)
     function ProductionControl:IterateAllNodes(callback, ...)
         for _, nodes in ipairs(self.Levels) do
             for _, node in pairs(nodes) do
-                local type, key = String.NameParser(node.Name)
-                local nodeTree = self:GetNodeTree(type)
+                local nodeType, key = String.NameParser(node.Name)
+                local nodeTree = self:GetNodeTree(nodeType)
 
-                callback(nodeTree, key, type, ...)
+                callback(nodeTree, key, nodeType, ...)
             end
         end
     end
 
-    function ProductionControl.SetTags(nodeTree, key, type, tag)
-        nodeTree.SetTags(nodeTree, key, tag, type)
+    function ProductionControl.SetTags(nodeTree, key, nodeType, tag)
+        nodeTree.SetTags(nodeTree, key, tag, nodeType)
     end
 
-    function ProductionControl.SetCounters(nodeTree, key, type, ...)
-        nodeTree.SetCounters(nodeTree, key, type)
+    function ProductionControl.SetCounters(nodeTree, key, nodeType, ...)
+        nodeTree.SetCounters(nodeTree, key, nodeType)
     end
 
-    function ProductionControl.UpdateThroughput(nodeTree, rkeyI, type)
-        nodeTree.UpdateThroughput(nodeTree, rkeyI, type)
+    function ProductionControl.UpdateThroughput(nodeTree, key, nodeType)
+        nodeTree.UpdateThroughput(nodeTree, key, nodeType)
+    end
+
+    function ProductionControl.ReAllocateResource(itemToReAllocate, linesToFix, linesToProcess)
+        local linesTags = {}
+
+        for _, v in pairs(linesToFix) do linesTags[v.Name] = {} end
+        for _, v in pairs(linesToProcess) do linesTags[v.Name] = {} end
+
+        
     end
 
     function ProductionControl:Print()
        print("\n... Printing Production Line ...")
 
-        for k, pLevel in ipairs(self.Levels) do
-            print("\n  * Production Node Level " .. k)
-            if k == 1 then
-                for pKey, IBT in pairs(pLevel) do
+        for level, sortedNodes in ipairs(self.Levels) do
+            print("\n  * Production Node Level " .. level)
+            if level == 1 then
+                for key, IBT in pairs(sortedNodes) do
                     local string = ""
 
                     for _, v in pairs(IBT.NextNodes) do string = v.Name .. ", " .. string end
                     string = string:gsub("(.+),%s*", "%1")
 
-                    print("    * " .. pKey .. " has " .. #IBT.Stations .. " terminal(s), is before: " .. string)
+                    print("    * " .. key .. " has " .. #IBT.Stations .. " terminal(s), is before: " .. string)
                 end
-            elseif k == #self.Levels then
-                for pKey, OBT in pairs(pLevel) do
+            elseif level == #self.Levels then
+                for key, OBT in pairs(sortedNodes) do
                     local string = ""
 
                     for _, v in pairs(OBT.PrevNodes) do string = v.Name .. ", " .. string end
                     string = string:gsub("(.+),%s*", "%1")
 
-                    print("    * " .. pKey .. " has " .. #OBT.Stations .. " terminal(s), is after: " .. string)
+                    print("    * " .. key .. " has " .. #OBT.Stations .. " terminal(s), is after: " .. string)
                 end
             else
-                for pKey, pNode in pairs(pLevel) do
+                for key, pNode in pairs(sortedNodes) do
                     local prevString, nextString = "", ""
 
                     for _, v in pairs(pNode.PrevNodes) do prevString = v.Name .. ", " .. prevString end
@@ -160,7 +169,7 @@ function ProductionControl:New(doInitialize, doPrint)
                     prevString = prevString:gsub("(.+),%s*", "%1")
                     nextString = nextString:gsub("(.+),%s*", "%1")
 
-                    print("    * " .. pKey .. " has " .. #pNode.Machines .. " machine(s), is")
+                    print("    * " .. key .. " has " .. #pNode.Machines .. " machine(s), is")
                     print("       after: " .. prevString .. "\n       before: " .. nextString)
                 end
             end
@@ -173,26 +182,21 @@ function ProductionControl:New(doInitialize, doPrint)
         while true do
             event.pull(1)
 
-            local itemLevels = terminals:GetItemLevels()
+            local itemLevels = privateFields.pTerminals:GetItemLevels()
 
             for ikey, iLevel in pairs(itemLevels.IBT) do
-                local ratioAmount = math.min(1, iLevel.RatioAmount * 24)
-                self:IterateInLine(terminals.IBT[ikey], true, productionLine.SetClock1, productionLine, ratioAmount)
+                local timeToDeplete = iLevel.StockAmount / iLevel.ThroughputPerMin
+                if timeToDeplete > 1 then break end
+                self:IterateInLine(privateFields.pTerminals.IBT[ikey], true, privateFields.pLines.SetClockComparedTo, privateFields.pLines, timeToDeplete^2, true)
             end
-
+--[[
             for ikey, iLevel in pairs(itemLevels.OBT) do
-                local ratioAmount, tag = math.max(0.8, iLevel.RatioAmount), "[OBT]_" .. ikey
-                if ratioAmount > 0.8 then
-                    ratioAmount = 1 - (ratioAmount - 0.8) / 0.2
-                elseif ratioAmount < 0.2 then
-                    ratioAmount = math.max(2.5, 0.2 / ratioAmount)
-                else break
-                end
+                local timeToFull = (iLevel.CapacityAmount - iLevel.StockAmount) / iLevel.ThroughputPerMin
                 
-                self:IterateInLine(terminals.OBT[ikey], false, productionLine.SetClock2, productionLine, ratioAmount, {tag})
+                self:IterateInLine(terminals.OBT[ikey], false, productionLine.SetClock2, productionLine, timeToFull)
             end
-
-            for rkey, _ in pairs(productionLine) do productionLine:UpdateClock(rkey) end
+]]--
+            for rkey, _ in pairs(privateFields.pLines) do privateFields.pLines:UpdateClock(rkey) end
         end
     end
 
@@ -200,14 +204,16 @@ function ProductionControl:New(doInitialize, doPrint)
         pLine:UpdateClock(rkey, clock)
     end
 
-    setmetatable(instance, {__index = self})
     if doInitialize then instance:Initialize() end
     if doPrint then instance:Print() end
-    return instance
+    return instance, privateFields.pTerminals
 end
 
-function ProductionLine:New()
+function ProductionLine:New(productionControl)
     local instance = {}
+    setmetatable(instance, {__index = self})
+
+    local pControl = productionControl
 
     function ProductionLine:NewNode(machineProxy, recipeInstance, clockSpeed)
         local isNew, rkey, clock = true, String.KeyGenerator(recipeInstance.Name), clockSpeed or 1
@@ -231,7 +237,7 @@ function ProductionLine:New()
             isNew = false
         end
 
-        machineProxy.nick = name .. " " .. string.format("%02d", #self[rkey].Machines)
+        machineProxy.nick = string.gsub(name, "_", " ") .. " " .. string.format("%02d", #self[rkey].Machines)
 
         return isNew
     end
@@ -274,15 +280,12 @@ function ProductionLine:New()
     end
 
     function ProductionLine:LinkNodes(keyThis, nodeOther, isInflow)
-        local _, keyOther = String.NameParser(nodeOther.Name)
+        local nodeType, keyOther1 = String.NameParser(nodeOther.Name)
+        local keyOther2 = (nodeType == "PN") and keyOther1 or nodeType
         local flow = isInflow and {"PrevNodes", "Demands"} or {"NextNodes", "Supplies"}
 
-        self[keyThis][flow[1]][keyOther] = nodeOther
-        if type == "PN" then
-            self[keyThis][flow[2]][keyOther] = {}
-        else
-            self[keyThis][flow[2]][type] = {}
-        end
+        self[keyThis][flow[1]][keyOther1] = nodeOther
+        self[keyThis][flow[2]][keyOther2] = {}
     end
 
     function ProductionLine:LinkThroughputs(rkeyThis, rkeyNext, recipeTree)
@@ -317,13 +320,13 @@ function ProductionLine:New()
         for nodeOthers, throughputs in pairs(direction) do
             local dir3 = nodeOthers == "PrevNodes" and "from" or "to"
             for keyOther, nodeOther in pairs(pNode[nodeOthers]) do
-                local type, _ = String.NameParser(nodeOther.Name)
+                local nodeType, _ = String.NameParser(nodeOther.Name)
                 local from, to = nodeOther, pNode
-                if type ~= "PN" then keyOther = type end
+                if nodeType ~= "PN" then keyOther = nodeType end
                 if nodeOthers == "NextNodes" then from, to = to, from end
 
                 for ikey, _ in pairs(pNode[throughputs][keyOther]) do
-                    local tCounters = component.proxy(component.findComponent(String.Composer(" ", keyThis, keyOther, ikey)))
+                    local tCounters = component.findComponent(String.Composer(" ", keyThis, keyOther, ikey))
                     self[keyThis][throughputs][keyOther][ikey].Counters = ThroughputCounter:New(tCounters, from, to, ikey)
                     print("    - " .. pNode.Name .. " got " .. #tCounters .. " " .. ikey .. " counter(s) " .. dir3 .. " " .. nodeOther.Name)
                 end
@@ -331,16 +334,93 @@ function ProductionLine:New()
         end
     end
 
-    function ProductionLine:UpdateThroughput(rkey)
-        local multiplier1, multiplier2 = #self[rkey].Machines, self[rkey].Clock
-        local direction = {"Demands", "Supplies"}
+    function ProductionLine:UpdateClock(rkey)
+        for _, machine in pairs(self[rkey].Machines) do machine.potential = self[rkey].Clock end
+    end
 
-        for _, dir in pairs(direction) do
-            for _, throughputs in pairs(self[rkey][dir]) do
-                throughputs.Amount = throughputs.Amount * multiplier1
-                throughputs.Duration = throughputs.Duration / multiplier2
+    function ProductionLine:UpdateThroughput(rkey, recipeTree)
+        local pNode = self[rkey]
+        local multiplier1, multiplier2 = #pNode.Machines, pNode.Clock
+        local direction = {Inflows = "Demands", Outflows = "Supplies"}
+
+        for dir1, dir2 in pairs(direction) do
+            local recipeThroughput = recipeTree[rkey][dir1]
+            for ikey, _ in pairs(pNode[dir2]) do
+                self[rkey][dir2][ikey].Amount = recipeThroughput[ikey].Amount * multiplier1
+                self[rkey][dir2][ikey].Duration = recipeThroughput[ikey].Duration / multiplier2
             end
         end
+    end
+
+    function ProductionLine:GetThRatioA(pNodeThis, ikeyThis, isIncremental)
+        local direction = isIncremental and "Supplies" or "Demands"
+        local throughputRatio, keyNexts = {}, {}
+
+        for rkeyNext, tpNexts in pairs(pNodeThis[direction]) do
+            keyNexts[rkeyNext] = {}
+            for ikeyNext, _ in pairs(tpNexts) do
+                throughputRatio[ikeyNext] = throughputRatio[ikeyNext] or {}
+                throughputRatio[ikeyNext][ikeyThis] = throughputRatio[ikeyNext][ikeyThis] or 1
+
+                local temp = RecipeTree:GetThroughputItemPair(rkeyNext, ikeyThis, ikeyNext, isIncremental)
+                temp = (60 / temp[rkeyNext]) * (temp[ikeyNext] / temp[ikeyThis])
+
+                throughputRatio[ikeyNext][ikeyThis] = throughputRatio[ikeyNext][ikeyThis] * temp
+                table.insert(keyNexts[rkeyNext], ikeyNext)
+            end
+        end
+
+        return throughputRatio, keyNexts
+    end
+
+    function ProductionLine:GetThRatioR(pNodeStart, ikeyStart, pNodeEnd, isIncremental)
+        local throughputRatio, keyNextsThis = instance:GetThRatioA(pNodeStart, ikeyStart, isIncremental)
+        local rkeyEnd = String.NameParser(pNodeEnd.Name)[2]
+        
+        for rkeyNextThis, ikeyNextsThis in pairs(keyNextsThis) do
+            throughputRatio = instance:GetThRatioRecursive(rkeyNextThis, ikeyNextsThis, rkeyEnd, isIncremental, throughputRatio)
+        end
+
+        return throughputRatio
+    end
+
+    function ProductionLine:GetThRatioRecursive(rkeyNext, ikeyNexts, rkeyEnd, isIncremental, throughputRatio)
+        local throughputThis = throughputRatio
+        for _, ikeyNext in pairs(ikeyNexts) do
+            local throughputNext, keyNextsNext = instance:GetThRatioA(self[rkeyNext], ikeyNext, isIncremental)
+            for ikeyNextNext, tpPairs1 in pairs(throughputNext) do
+                for ikeyThisNext, tpPairs2 in pairs(tpPairs1) do
+                    if throughputThis[ikeyNextNext][ikeyThisNext] then
+                        throughputThis[ikeyNextNext][ikeyThisNext] = throughputThis[ikeyNextNext][ikeyThisNext] * tpPairs2
+                    elseif throughputThis[ikeyNextNext] then
+                        throughputThis[ikeyNextNext][ikeyThisNext] = tpPairs2
+                    else
+                        throughputThis[ikeyNextNext] = {[ikeyThisNext] = tpPairs2}
+                    end
+                end
+            end
+            if rkeyNext ~= rkeyEnd then
+                throughputThis = instance:GetThRatioRecursive(ikeyNext, keyNextsNext, rkeyEnd, isIncremental, throughputThis)
+            end
+        end
+
+        return throughputThis
+    end
+
+    function ProductionLine:CalcThRatioR(throughputRatio, ikeyStart, ikeyEnd, ...)
+        local throughput = ... or {[ikeyStart] = 1}
+
+        for ikeyNext, tpPairs in pairs(throughputRatio) do
+            throughput[ikeyNext] = throughput[ikeyNext] or 1
+            for ikeyThis, tpPair in pairs(tpPairs) do
+                if ikeyThis == ikeyStart then
+                    throughput[ikeyThis] = throughput[ikeyThis] * tpPair
+                    throughput[ikeyNext] = throughput[ikeyNext] * instance:CalcThRatioR(throughputRatio, ikeyNext, ikeyEnd, throughput)[ikeyNext]
+                end
+            end
+        end
+
+        return throughput
     end
 
 --[[
@@ -388,41 +468,13 @@ function ProductionLine:New()
 
         return isInChain
     end
---[[
-    function ProductionLine:SetClock1(nodeI, rkeyI, clock)
-        if not self[rkeyI] then return end
-        nodeI.Clock = clock
+
+    function ProductionLine:SetClockCompare(nodeI, rkeyI, clock, isBigger)
+        local setClock = nodeI.Clock
+        setClock = isBigger and math.max(setClock, clock) or math.min(setClock, clock)
+        
+        self[rkeyI].Clock = setClock
     end
 
-    function ProductionLine:SetClock2(nodeI, rkeyI, clock, tags)
-        if not #self[rkeyI].Tags > 0 then return end
-        local tagsChecked = {}
-
-        for _, tag1 in pairs(nodeI.Tags) do
-            local isTags = false
-            tagsChecked[tag1] = true
-            for _, tag2 in pairs(tags) do
-                if tag1 == tag2 then isTags = true end
-            end
-            if isTags == false then return end
-        end
-
-        for _, tag2 in pairs(tags) do
-            if tagsChecked[tag2] == true then break end
-            local isTags = false
-            for _, tag1 in pairs(nodeI.Tags) do
-                if tag1 == tag2 then isTags = true end
-            end
-            if isTags == false then return end
-        end
-
-        nodeI.Clock = clock
-    end
-]]--
-    function ProductionLine:UpdateClock(rkey)
-        for _, machine in pairs(self[rkey].Machines) do machine.potential = self[rkey].Clock end
-    end
-               
-    setmetatable(instance, {__index = self})
     return instance
 end

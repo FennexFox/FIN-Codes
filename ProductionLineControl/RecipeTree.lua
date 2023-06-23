@@ -60,6 +60,19 @@ function RecipeTree:New()
         self[rkey][fkey][ikey] = {Item = itemAmount.Type, Amount = itemAmount.Amount, Duration = recipeNode.Duration}
     end
 
+    function RecipeTree:GetThroughputItemPair(rkey, ikeyThis, ikeyNext, isIncremental)
+        local recipeNode, throughput = self[rkey], {}
+        local ikeyOut, ikeyIn
+
+        if isIncremental then ikeyOut, ikeyIn = ikeyNext, ikeyThis else ikeyOut, ikeyIn = ikeyThis, ikeyNext end
+
+        throughput[ikeyOut] = recipeNode.Outflows[ikeyOut].Amount
+        throughput[ikeyIn] = recipeNode.Inflows[ikeyIn].Amount
+        throughput[rkey] = recipeNode.Duration
+
+        return throughput
+    end
+
     setmetatable(instance, {__index = self})
     return instance
 end

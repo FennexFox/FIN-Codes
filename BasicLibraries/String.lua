@@ -46,10 +46,10 @@ function String.ItemKeyGenerator(itemType)
 end
 
 function String.NameParser(name)
-    local type = name:gsub("%[(.*)%]_(.*)", "%1")
-    local key = name:gsub("%[(.*)%]_(.*)", "%2")
+    local nodeType = name:gsub("%[(.*)%]_(.*)", "%1")
+    local nodeKey = name:gsub("%[(.*)%]_(.*)", "%2")
     
-    return type, key
+    return nodeType, nodeKey
 end
 
 function String.Composer(spacer, ...)

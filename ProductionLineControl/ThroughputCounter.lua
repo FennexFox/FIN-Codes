@@ -34,8 +34,8 @@ function ThroughputCounter:New(tCounters, from, to, ikey)
         end
     end
 
-    for i, counter in ipairs(self.counters) do
-        counter.nick = string.format("[TC]_%s / from_%s to_%s / %02d", ikey, fromName, toName, i)
+    for i, counter in ipairs(instance.counters) do
+        counter.nick = string.format("[TC] %s / %s -> %s / %02d", ikey, fromName, toName, i)
     end
 
     return instance

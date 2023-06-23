@@ -3,16 +3,19 @@
 
 Terminal = {}
 
-function Terminal:New() -- Terminal class is a placeholder
+function Terminal:New(productionControl) -- Terminal class is a placeholder
     local instance = {IBT = {}, OBT = {}}
+    setmetatable(instance, {__index = self})
+
+    local pControl = productionControl
 
     function Terminal:NewNode(itemType, isInbound)
         local isNew, ikey = false, String.ItemKeyGenerator(itemType)
-        local isInboundStr = isInbound and "IBT" or "OBT"
+        local type = isInbound and "IBT" or "OBT"
 
-        if not self[isInboundStr][ikey] then
-            self[isInboundStr][ikey] = {
-                Name = "[" .. isInboundStr .. "]_" .. ikey,
+        if not self[type][ikey] then
+            self[type][ikey] = {
+                Name = "[" .. type .. "]_" .. ikey,
                 Shipments = {Item = itemType},
                 Stations = {},
                 PrevNodes = {},
@@ -22,7 +25,7 @@ function Terminal:New() -- Terminal class is a placeholder
             }
         end
 
-        return self[isInboundStr][ikey], isNew
+        return self[type][ikey], isNew
     end
     
     function Terminal:SetProductionTerminal(pLine, rTree)
@@ -48,26 +51,26 @@ function Terminal:New() -- Terminal class is a placeholder
 
         self:RegisterStations()
 
-        print("\n  - Logistics Terminal Set: " .. iCounter .. " IBT(s) and " .. oCounter .. " OBT(s)") return true
+        print("\n  - Logistics Terminal Set: " .. iCounter .. " IBT(s) and " .. oCounter .. " OBT(s)") return self
     end
 
     function Terminal:RegisterStations()
-        for isInboundStr, stations in pairs(self) do
+        for type, stations in pairs(self) do
             for ikey, terminal in pairs(stations) do
-                local stationsI = component.findComponent(String.Composer(" ", "terminal", isInboundStr, ikey))
+                local stationsI = component.findComponent(String.Composer(" ", "terminal", type, ikey))
                 for i, sI in ipairs (stationsI) do
                     local station = component.proxy(sI)
-                    station.nick = terminal.Name .. " " .. string.format("%02d", i)
-                    station.isLoadMode = (isInboundStr == "OBT")
-                    table.insert(self[isInboundStr][ikey].Stations, station)
+                    station.nick = string.gsub(terminal.Name, "_", " ") .. " " .. string.format("%02d", i)
+                    station.isLoadMode = (type == "OBT")
+                    table.insert(self[type][ikey].Stations, station)
                 end
-                assert(#self[isInboundStr][ikey].Stations > 0, terminal.Name .. " has no stations!")
+                assert(#self[type][ikey].Stations > 0, terminal.Name .. " has no stations!")
             end
         end
     end
 
-    function Terminal:SetTags(rkeyI, tag, isInboundStr)
-        table.insert(self[isInboundStr][rkeyI].Tags, tag)
+    function Terminal:SetTags(rkeyI, tag, type)
+        table.insert(self[type][rkeyI].Tags, tag)
     end
 
     function Terminal:SetCounters(ikey, type)
@@ -75,9 +78,9 @@ function Terminal:New() -- Terminal class is a placeholder
         local nodeOthers = (type == "IBT") and terminal.NextNodes or terminal.PrevNodes
 
         for keyOther, nodeOther in pairs(nodeOthers) do
-            local tCounters = component.proxy(component.findComponent(String.Composer(" ", ikey, type, keyOther)))
+            local tCounters = component.findComponent(String.Composer(" ", ikey, type, keyOther))
+            
             local from, to = terminal, nodeOther
-
             if type == "OBT" then from, to = to, from end
 
             self[type][ikey].Throughput[keyOther] = ThroughputCounter:New(tCounters, from, to, ikey)
@@ -85,25 +88,38 @@ function Terminal:New() -- Terminal class is a placeholder
         end
     end
 
-    function Terminal:GetItemLevel(ikey, isInboundStr)
+    function Terminal:GrossCounterFunction(ikey, type, fName, ...)
+        local terminal = self[type][ikey]
+        local temp = ... or 0
+
+        for _, counter in pairs(terminal.Throughput) do
+            if fName == "GetIPM" then temp = temp + counter:GetIPM()
+            elseif fName == "GetLimit" then temp = temp + counter:GetLimit()
+            elseif fName == "SetLimit" then counter:SetLimit(temp / #terminal.Throughput)
+            else error("Counter Function Incorrect!")
+            end
+        end
+
+        return temp
+    end
+
+    function Terminal:GetItemLevel(ikey, type)
         local itemLevel = {
             StockAmount = 0,
-            StockStack = 0,
             CapacityAmount = 0,
-            CapacityStack = 0,
             RatioAmount = 0,
-            RatioStack = 0
+            ThroughputPerMin = 0
         }
 
-        for _, station in pairs(self[isInboundStr][ikey].Stations) do
-            local inventory, stackSize = station:getInv(), self[isInboundStr][ikey].Item.Max
+        for _, terminal in pairs(self[type][ikey]) do
+            itemLevel.ThroughputPerMin = self:GrossCounterFunction(ikey, type, "GetIPM")
+            for _, station in pairs(terminal.Stations) do
+                local inventory, stackSize = station:getInv(), self[type][ikey].Item.Max
 
-            itemLevel.StockAmount = itemLevel.StockAmount + inventory.itemCount
-            itemLevel.StockStack = itemLevel.StockStack + math.ceil(inventory.itemCount / stackSize)
-            itemLevel.CapacityAmount = itemLevel.CapacityAmount + inventory.size * stackSize
-            itemLevel.CapacityStack = itemLevel.CapacityStack + inventory.size
-            itemLevel.RatioAmount = itemLevel.StockAmount / itemLevel.CapacityAmount
-            itemLevel.RatioStack = itemLevel.StockStack / itemLevel.CapacityStack
+                itemLevel.StockAmount = itemLevel.StockAmount + inventory.itemCount
+                itemLevel.CapacityAmount = itemLevel.CapacityAmount + inventory.size * stackSize
+                itemLevel.RatioAmount = itemLevel.StockAmount / itemLevel.CapacityAmount
+            end
         end
 
         return itemLevel
@@ -111,9 +127,9 @@ function Terminal:New() -- Terminal class is a placeholder
 
     function Terminal:GetItemLevels()
         local itemLevels = {IBT = {}, OBT = {}}
-        for isInboundStr, terminals in pairs(self) do
+        for type, terminals in pairs(self) do
             for ikey, _ in pairs(terminals) do
-                itemLevels[isInboundStr][ikey] = self:GetItemLevel(ikey, isInboundStr)
+                itemLevels[type][ikey] = self:GetItemLevel(ikey, type)
             end
         end
 
@@ -124,6 +140,5 @@ function Terminal:New() -- Terminal class is a placeholder
 
     end
 
-    setmetatable(instance, {__index = self})
     return instance
 end
