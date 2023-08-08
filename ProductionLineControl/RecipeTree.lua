@@ -23,7 +23,8 @@ function RecipeTree:New()
                 Inflows = {},
                 Outflows = {},
                 Recipe = recipe,
-                Tags = {}
+                Tags = {},
+                NodeTree = self,
             }
 
             for _, i in pairs(ingredients) do

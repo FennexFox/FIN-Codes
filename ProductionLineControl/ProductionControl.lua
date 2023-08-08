@@ -5,12 +5,12 @@
 ProductionControl, ProductionLine = {Levels = {}}, {}
 
 function ProductionControl:New(doInitialize, doPrint)
-    local instance = {}
+    local instance, privateFields = {}, {}
     setmetatable(instance, {__index = self})
 
-    local privateFields = {} -- these are private fields, shall not be directly referenced
     privateFields.rTree = RecipeTree:New() -- This is a clone of RecipeTree from Central DB; should be changed to Fetch()
-    privateFields.pLines, privateFields.pTerminals = ProductionLine:New(instance), Terminal:New(instance)
+    privateFields.pLines = ProductionLine:New(privateFields.rTree)
+    privateFields.pTerminals = Terminals:New()
 
     function ProductionControl:Initialize()
         local machineIDs = component.findComponent(findClass("Manufacturer"))
@@ -37,14 +37,14 @@ function ProductionControl:New(doInitialize, doPrint)
 
     function ProductionControl:LinkNodes()
         local callback = privateFields.pLines.LinkThroughputs
-        privateFields.pLines:IterateNodesPair(callback, privateFields.rTree)
+        privateFields.pLines:IterateNodesPair(callback)
     end
 
     function ProductionControl:SetTerminals()
-        local pTerminals = privateFields.pTerminals:SetProductionTerminal(privateFields.pLines, privateFields.rTree)
+        privateFields.pTerminals:SetProductionTerminal(privateFields.pLines, privateFields.rTree)
         self.Levels[1] = self.Levels[1] or {}
 
-        for type, terminals in pairs(pTerminals) do
+        for type, terminals in pairs(privateFields.pTerminals) do
             local isInbound = (type == "IBT")
             for ikey, terminalNode in pairs(terminals) do
                 local name, flow = terminalNode.Name, isInbound and {"NextNodes", "Demands"} or {"PrevNodes", "Supplies"}
@@ -81,23 +81,11 @@ function ProductionControl:New(doInitialize, doPrint)
         end
     end
 
-    function ProductionControl:GetNodeTree(nodeType)
-        local nodeTree = {}
-
-        if nodeType == "RN" then nodeTree = privateFields.rTree
-        elseif nodeType == "PN" then nodeTree = privateFields.pLines
-        else nodeTree = privateFields.pTerminals
-        end
-
-        return nodeTree
-    end
-
     function ProductionControl:IterateInLine(nodeI, isIncremental, callback, ...)
         local direction = isIncremental and "NextNodes" or "PrevNodes"
         local nodeType, keyI = String.NameParser(nodeI.Name)
-        local nodeTree = self:GetNodeTree(nodeType)
 
-        callback(nodeTree, keyI, nodeType, ...)
+        callback(nodeI.NodeTree, keyI, nodeType, ...)
 
         for _, nodeJ in pairs(nodeI[direction]) do
             self:IterateInLine(nodeJ, isIncremental, callback, ...)
@@ -108,9 +96,8 @@ function ProductionControl:New(doInitialize, doPrint)
         for _, nodes in ipairs(self.Levels) do
             for _, node in pairs(nodes) do
                 local nodeType, key = String.NameParser(node.Name)
-                local nodeTree = self:GetNodeTree(nodeType)
 
-                callback(nodeTree, key, nodeType, ...)
+                callback(node.NodeTree, key, nodeType, ...)
             end
         end
     end
@@ -126,15 +113,15 @@ function ProductionControl:New(doInitialize, doPrint)
     function ProductionControl.UpdateThroughput(nodeTree, key, nodeType)
         nodeTree.UpdateThroughput(nodeTree, key, nodeType)
     end
-
+--[[
     function ProductionControl.ReAllocateResource(itemToReAllocate, linesToFix, linesToProcess)
         local linesTags = {}
 
         for _, v in pairs(linesToFix) do linesTags[v.Name] = {} end
         for _, v in pairs(linesToProcess) do linesTags[v.Name] = {} end
-
-        
+       
     end
+]]--
 
     function ProductionControl:Print()
        print("\n... Printing Production Line ...")
@@ -209,11 +196,11 @@ function ProductionControl:New(doInitialize, doPrint)
     return instance, privateFields.pTerminals
 end
 
-function ProductionLine:New(productionControl)
-    local instance = {}
+function ProductionLine:New(reciepeTree)
+    local instance, privateFields = {}, {}
     setmetatable(instance, {__index = self})
 
-    local pControl = productionControl
+    privateFields.rTree = reciepeTree
 
     function ProductionLine:NewNode(machineProxy, recipeInstance, clockSpeed)
         local isNew, rkey, clock = true, String.KeyGenerator(recipeInstance.Name), clockSpeed or 1
@@ -231,6 +218,7 @@ function ProductionLine:New(productionControl)
                 Demands = {IBT = {}},
                 Supplies = {OBT = {}},
                 Tags = {},
+                NodeTree = self,
             }
         else
             table.insert(self[rkey].Machines, machineProxy)
@@ -242,7 +230,7 @@ function ProductionLine:New(productionControl)
         return isNew
     end
 
-    function ProductionLine:InitializeNodes(machineIDs, recipeTree)
+    function ProductionLine:InitializeNodes(machineIDs)
         local recipeInstances, machineProxies = {}, component.proxy(machineIDs)
 
         print("  - Scaning " .. #machineIDs .. " Machines to set Production Nodes")
@@ -254,8 +242,9 @@ function ProductionLine:New(productionControl)
 
         print("  - " .. #recipeInstances .. " Production Nodes initialized, Updating RecipeTree")
 
-        recipeTree:NewNodes(recipeInstances)
-        return recipeInstances
+        privateFields.rTree:NewNodes(recipeInstances)
+
+        return privateFields.rTree
     end
 
     function ProductionLine:IterateNodesPair(callback, ...)
@@ -288,11 +277,11 @@ function ProductionLine:New(productionControl)
         self[keyThis][flow[2]][keyOther2] = {}
     end
 
-    function ProductionLine:LinkThroughputs(rkeyThis, rkeyNext, recipeTree)
+    function ProductionLine:LinkThroughputs(rkeyThis, rkeyNext)
         local itemLinks = 0
 
-        for ikeyPush, flowPush in pairs(recipeTree[rkeyThis].Outflows) do
-            for ikeyPull, flowPull in pairs(recipeTree[rkeyNext].Inflows) do
+        for ikeyPush, flowPush in pairs(privateFields.rTree[rkeyThis].Outflows) do
+            for ikeyPull, flowPull in pairs(privateFields.rTree[rkeyNext].Inflows) do
                 if ikeyPush == ikeyPull then
                     if itemLinks == 0 then
                         self:LinkNodes(rkeyThis, self[rkeyNext], false)
@@ -338,13 +327,13 @@ function ProductionLine:New(productionControl)
         for _, machine in pairs(self[rkey].Machines) do machine.potential = self[rkey].Clock end
     end
 
-    function ProductionLine:UpdateThroughput(rkey, recipeTree)
+    function ProductionLine:UpdateThroughput(rkey)
         local pNode = self[rkey]
         local multiplier1, multiplier2 = #pNode.Machines, pNode.Clock
         local direction = {Inflows = "Demands", Outflows = "Supplies"}
 
         for dir1, dir2 in pairs(direction) do
-            local recipeThroughput = recipeTree[rkey][dir1]
+            local recipeThroughput = privateFields.rTree[rkey][dir1]
             for ikey, _ in pairs(pNode[dir2]) do
                 self[rkey][dir2][ikey].Amount = recipeThroughput[ikey].Amount * multiplier1
                 self[rkey][dir2][ikey].Duration = recipeThroughput[ikey].Duration / multiplier2
@@ -352,78 +341,81 @@ function ProductionLine:New(productionControl)
         end
     end
 
-    function ProductionLine:GetThRatioA(pNodeThis, ikeyThis, isIncremental)
+    function ProductionLine:GetThroughputMultipliers(pNodeThis, ikeyThis, isIncremental)
         local direction = isIncremental and "Supplies" or "Demands"
-        local throughputRatio, keyNexts = {}, {}
+        local itemAmounts, throughputMultipliers = {}, {}
 
         for rkeyNext, tpNexts in pairs(pNodeThis[direction]) do
-            keyNexts[rkeyNext] = {}
             for ikeyNext, _ in pairs(tpNexts) do
-                throughputRatio[ikeyNext] = throughputRatio[ikeyNext] or {}
-                throughputRatio[ikeyNext][ikeyThis] = throughputRatio[ikeyNext][ikeyThis] or 1
+                local temp = privateFields.rTree:GetThroughputItemPair(rkeyNext, ikeyThis, ikeyNext, isIncremental)
+                local multiplier = 60 / temp[rkeyNext]
 
-                local temp = RecipeTree:GetThroughputItemPair(rkeyNext, ikeyThis, ikeyNext, isIncremental)
-                temp = (60 / temp[rkeyNext]) * (temp[ikeyNext] / temp[ikeyThis])
-
-                throughputRatio[ikeyNext][ikeyThis] = throughputRatio[ikeyNext][ikeyThis] * temp
-                table.insert(keyNexts[rkeyNext], ikeyNext)
+                itemAmounts[ikeyNext] = itemAmounts[ikeyNext] or {AmountThis = 0, AmountNext = 0}
+                itemAmounts[ikeyNext].AmountThis = itemAmounts[ikeyNext].AmountThis + temp[ikeyThis] * multiplier
+                itemAmounts[ikeyNext].AmountNext = itemAmounts[ikeyNext].AmountNext + temp[ikeyNext] * multiplier
             end
         end
 
-        return throughputRatio, keyNexts
+        for iAmounts, ikey in pairs(itemAmounts) do
+            throughputMultipliers[ikey] = iAmounts.AmountNext / iAmounts.AmountThis
+        end
+
+        return throughputMultipliers
     end
 
-    function ProductionLine:GetThRatioR(pNodeStart, ikeyStart, pNodeEnd, isIncremental)
-        local throughputRatio, keyNextsThis = instance:GetThRatioA(pNodeStart, ikeyStart, isIncremental)
-        local rkeyEnd = String.NameParser(pNodeEnd.Name)[2]
-        
-        for rkeyNextThis, ikeyNextsThis in pairs(keyNextsThis) do
-            throughputRatio = instance:GetThRatioRecursive(rkeyNextThis, ikeyNextsThis, rkeyEnd, isIncremental, throughputRatio)
-        end
-
-        return throughputRatio
-    end
-
-    function ProductionLine:GetThRatioRecursive(rkeyNext, ikeyNexts, rkeyEnd, isIncremental, throughputRatio)
-        local throughputThis = throughputRatio
-        for _, ikeyNext in pairs(ikeyNexts) do
-            local throughputNext, keyNextsNext = instance:GetThRatioA(self[rkeyNext], ikeyNext, isIncremental)
-            for ikeyNextNext, tpPairs1 in pairs(throughputNext) do
-                for ikeyThisNext, tpPairs2 in pairs(tpPairs1) do
-                    if throughputThis[ikeyNextNext][ikeyThisNext] then
-                        throughputThis[ikeyNextNext][ikeyThisNext] = throughputThis[ikeyNextNext][ikeyThisNext] * tpPairs2
-                    elseif throughputThis[ikeyNextNext] then
-                        throughputThis[ikeyNextNext][ikeyThisNext] = tpPairs2
-                    else
-                        throughputThis[ikeyNextNext] = {[ikeyThisNext] = tpPairs2}
-                    end
-                end
-            end
-            if rkeyNext ~= rkeyEnd then
-                throughputThis = instance:GetThRatioRecursive(ikeyNext, keyNextsNext, rkeyEnd, isIncremental, throughputThis)
-            end
-        end
-
-        return throughputThis
-    end
-
-    function ProductionLine:CalcThRatioR(throughputRatio, ikeyStart, ikeyEnd, ...)
-        local throughput = ... or {[ikeyStart] = 1}
-
-        for ikeyNext, tpPairs in pairs(throughputRatio) do
-            throughput[ikeyNext] = throughput[ikeyNext] or 1
-            for ikeyThis, tpPair in pairs(tpPairs) do
-                if ikeyThis == ikeyStart then
-                    throughput[ikeyThis] = throughput[ikeyThis] * tpPair
-                    throughput[ikeyNext] = throughput[ikeyNext] * instance:CalcThRatioR(throughputRatio, ikeyNext, ikeyEnd, throughput)[ikeyNext]
-                end
-            end
-        end
-
-        return throughput
+    function ProductionLine:GetThroughputMultipliersRemote(pNodeStart, pkeyEnd, ikeyStart, ikeyThis, isIncremental)
+         
     end
 
 --[[
+    function ProductionLine:GetThRatioR(pNodeThis, rTree, isIncremental, ikeyEnd, thRatiosR)
+        local pNodesNext = isIncremental and pNodeThis.NextNodes or pNodeThis.PrevNodes
+        local throughputsNext = isIncremental and pNodeThis.Supplies or pNodeThis.Demands
+        local tpRatiosTemp, ikeyNexts, ikeysOnBoth, thRatioR = {}, {}, {}, 0
+
+        for ikeyNext, _ in thRatiosR do ikeyNexts[ikeyNext] = true end
+
+        for rkeyNext, pNodeNext in pairs(pNodesNext) do
+            for ikeyNext, _ in pairs(throughputsNext[rkeyNext]) do
+                if not ikeyNexts[ikeyNext] then break
+                elseif ikeyNext == ikeyEnd then thRatioR = thRatioR + thRatiosR[ikeyEnd]
+                end
+
+                local throughtputRatiosNext = instance:GetThRatioA(pNodeNext, ikeyNext, rTree, isIncremental)
+                tpRatiosTemp[ikeyNext] = tpRatiosTemp[ikeyNext] or {}
+
+                for ikeyNextNext, throughputRatioNext in pairs(throughtputRatiosNext) do
+                    tpRatiosTemp[ikeyNext][ikeyNextNext] = tpRatiosTemp[ikeyNext][ikeyNextNext] or {0, 0}
+                    tpRatiosTemp[ikeyNext][ikeyNextNext][1] = tpRatiosTemp[ikeyNext][ikeyNextNext][1] + throughputRatioNext[1]
+                    tpRatiosTemp[ikeyNext][ikeyNextNext][2] = tpRatiosTemp[ikeyNext][ikeyNextNext][2] + throughputRatioNext[2]
+                    if ikeyNexts[ikeyNextNext] then ikeysOnBoth[ikeyNextNext] = true end
+                end
+            end
+        end
+
+
+        for ikeyOnBoth, _ in pairs(ikeysOnBoth) do
+            for ikeyNextNext, throughputRatio in pairs(tpRatiosTemp[ikeyOnBoth]) do
+                thRatiosR[ikeyNextNext] = thRatiosR[ikeyOnBoth] * throughputRatio[1] / throughputRatio[2]
+                tpRatiosTemp[ikeyOnBoth] = nil
+            end
+        end
+
+        for ikeyNext, throughputRatios in pairs(tpRatiosTemp) do
+            for ikeyNextNext, throughputRatio in pairs(throughputRatios) do
+                thRatiosR[ikeyNextNext] = thRatiosR[ikeyNext] * throughputRatio[1] / throughputRatio[2]
+            end
+        end
+
+        for _, pNodeNext in pairs(pNodesNext) do
+            local nodeType = String.NameParser(pNodeNext.Name)[1]
+            if nodeType ~= "PN" then break end
+            thRatioR = thRatioR + instance:GetThRatioR(pNodeNext, rTree, isIncremental, ikeyEnd, thRatiosR)
+        end
+
+        return thRatioR
+    end
+
     function ProductionLine:GetSurplusPerMin(rkey, ikey)
         local push, pull = self[rkey].Supplies[ikey], self:GetDemandPerMin(ikey)
         push = push.Amount / push.Duration

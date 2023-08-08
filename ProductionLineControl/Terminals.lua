@@ -1,15 +1,13 @@
--- dependent on RecipeTree
+-- dependent on productionControl
 -- dependent on String
 
-Terminal = {}
+Terminals = {}
 
-function Terminal:New(productionControl) -- Terminal class is a placeholder
+function Terminals:New() -- Terminal class is a placeholder
     local instance = {IBT = {}, OBT = {}}
     setmetatable(instance, {__index = self})
 
-    local pControl = productionControl
-
-    function Terminal:NewNode(itemType, isInbound)
+    function Terminals:NewNode(itemType, isInbound)
         local isNew, ikey = false, String.ItemKeyGenerator(itemType)
         local type = isInbound and "IBT" or "OBT"
 
@@ -22,13 +20,14 @@ function Terminal:New(productionControl) -- Terminal class is a placeholder
                 NextNodes = {},
                 Throughput = {},
                 Tags = {},
+                NodeTree = self,
             }
         end
 
         return self[type][ikey], isNew
     end
     
-    function Terminal:SetProductionTerminal(pLine, rTree)
+    function Terminals:SetProductionTerminal(pLine, rTree)
         local iCounter, oCounter = 0, 0
         local direction, nodeOther = {"Inflows", "Outflows"}, {"NextNodes", "PrevNodes"}
 
@@ -51,10 +50,11 @@ function Terminal:New(productionControl) -- Terminal class is a placeholder
 
         self:RegisterStations()
 
-        print("\n  - Logistics Terminal Set: " .. iCounter .. " IBT(s) and " .. oCounter .. " OBT(s)") return self
+        print("\n  - Logistics Terminal Set: " .. iCounter .. " IBT(s) and " .. oCounter .. " OBT(s)")
+        return self
     end
 
-    function Terminal:RegisterStations()
+    function Terminals:RegisterStations()
         for type, stations in pairs(self) do
             for ikey, terminal in pairs(stations) do
                 local stationsI = component.findComponent(String.Composer(" ", "terminal", type, ikey))
@@ -69,11 +69,11 @@ function Terminal:New(productionControl) -- Terminal class is a placeholder
         end
     end
 
-    function Terminal:SetTags(rkeyI, tag, type)
+    function Terminals:SetTags(rkeyI, tag, type)
         table.insert(self[type][rkeyI].Tags, tag)
     end
 
-    function Terminal:SetCounters(ikey, type)
+    function Terminals:SetCounters(ikey, type)
         local terminal = self[type][ikey]
         local nodeOthers = (type == "IBT") and terminal.NextNodes or terminal.PrevNodes
 
@@ -88,7 +88,7 @@ function Terminal:New(productionControl) -- Terminal class is a placeholder
         end
     end
 
-    function Terminal:GrossCounterFunction(ikey, type, fName, ...)
+    function Terminals:GrossCounterFunction(ikey, type, fName, ...)
         local terminal = self[type][ikey]
         local temp = ... or 0
 
@@ -103,7 +103,7 @@ function Terminal:New(productionControl) -- Terminal class is a placeholder
         return temp
     end
 
-    function Terminal:GetItemLevel(ikey, type)
+    function Terminals:GetItemLevel(ikey, type)
         local itemLevel = {
             StockAmount = 0,
             CapacityAmount = 0,
@@ -125,7 +125,7 @@ function Terminal:New(productionControl) -- Terminal class is a placeholder
         return itemLevel
     end
 
-    function Terminal:GetItemLevels()
+    function Terminals:GetItemLevels()
         local itemLevels = {IBT = {}, OBT = {}}
         for type, terminals in pairs(self) do
             for ikey, _ in pairs(terminals) do
@@ -136,7 +136,7 @@ function Terminal:New(productionControl) -- Terminal class is a placeholder
         return itemLevels
     end
 
-    function Terminal:Main()
+    function Terminals:Main()
 
     end
 
