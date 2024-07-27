@@ -63,28 +63,39 @@ for floor, floorData in pairs(eData.floors) do
 	interface.Btn.module:setColor(1, 1, 1, 0.1)
   else
   	eDoors[floor]:setConfiguration(1)
-	interface.Btn.module:setColor(0.1, 1, 0.1, 0)
+	interface.Btn.module:setColor(1, 0.1, 0.1, 0)
   end
 end
 
 -- Main loop
 
 while true do
-  local data = {event.pull()}
+  local data = {event.pull(0.1)}
 
-  local e, s, v, floor, data = (function(e, s, v, ...)
-		local f = eData.modules[s.internalName]
-		return e, s, v, f, {...}
-	end)(table.unpack(data))
+  if #data < 2 then
+  else
+    local e, s, v, floor, data = (function(e, s, v, ...)
+      local f = eData.modules[s.internalName]
+      return e, s, v, f, {...}
+    end)(table.unpack(data))
+  end
 
-  if e == "Trigger" then
-    local cFloor = eCabin:getCurrentFloor()+1
-    eInterface[floor].Dsp.module:setText(cFloor)
-
-    if floor == cFloor then 
-      eDoors[floor]:setConfiguration(0)
-	  else
-  		eDoors[floor]:setConfiguration(1)
+  if cFloor == eCabin:getCurrentFloor()+1 then
+  else
+    cFloor = eCabin:getCurrentFloor()+1
+    
+	for f=1, #eData.floors do
+	eInterface[f].Dsp.module:setText(cFloor)
+	    if f == cFloor then 
+		  	eDoors[f]:setConfiguration(0)
+			eInterface[f].Btn.module:setColor(1, 1, 1, 0.1)
+		  else
+		  	eDoors[f]:setConfiguration(1)
+			eInterface[f].Btn.module:setColor(1, 0.1, 0.1, 0)
+		end
   	end
+  end
+
+  if e == "Trigger" then -- calling elevator cabin
   end
 end
