@@ -53,7 +53,7 @@ function VehicleDB:New()
       RouteDB:Discharge(VehicleInternalName)
     end
 
-    setmetatable(vDB, {__index = VehicleDB})
+    setmetatable(vDB, {__index = self})
     return vDB
 
 end
@@ -107,7 +107,7 @@ function RouteDB:New()
     self.Route.Fleet[vNumber] = nil
   end
 
-  setmetatable(rDB, {__index = RouteDB})
+  setmetatable(rDB, {__index = self})
   return rDB
 
 end

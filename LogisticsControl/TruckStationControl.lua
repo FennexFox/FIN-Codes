@@ -81,7 +81,7 @@ function Station:New(identifier)
     end
   end
 
-  setmetatable(station, {__index = Station})
+  setmetatable(station, {__index = self})
   return station
 
 end

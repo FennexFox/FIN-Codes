@@ -43,7 +43,7 @@ function NetworkComm(e, s, sender, port, data)
           SignTest.SetAllGreen()
         else
           print("Initiate Vehicle Assign")
-          SIgnTest.SetUnassigned()
+          SignTest.SetUnassigned()
         end
       else
         print("Initiate Vehicle Register")
