@@ -1,7 +1,8 @@
 # FIN-Codes
 Some randome Ficsit-Netowork projects I use in my Satisfactory playthrough
 
-Might be a fork of [this resource](https://discord.com/channels/735877487808086088/735879752522399804/1259111023093485630)?
+## FicsitOS:tm:
+Some Out-Of-Box:tm: OS-thingy, primariliy comes with a bsic blueprint-thingy for standard IO terminal with CLI and Package Installer to import some libary-thingies from online(this github, maybe?) or from mainframe of your factory, to reduce ad-hoc implementations all over the factories and efficient installations on new production sites. Might be a fork of [this resource](https://discord.com/channels/735877487808086088/735879752522399804/1259111023093485630)?
 
 ## BasicLibraries (OOD)
 Some useful libraries like unit conversion, vanilla sign control and etc. Need to be updated to use Structs and other stuffs.
