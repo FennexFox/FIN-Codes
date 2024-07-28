@@ -71,10 +71,11 @@ end
 
 while true do
   local data = {event.pull(0.1)}
+  local e, s, v, floor
 
   if #data < 2 then
   else
-    local e, s, v, floor, data = (function(e, s, v, ...)
+    e, s, v, floor, data = (function(e, s, v, ...)
       local f = eData.modules[s.internalName]
       return e, s, v, f, {...}
     end)(table.unpack(data))
