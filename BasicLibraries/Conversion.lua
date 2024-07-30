@@ -1,56 +1,54 @@
-Conversion = {RGBA = {}, Number = {}}
+RGBA, Number = {}, {}
 
-function Conversion.RGBA.Float2Hex(RGBAfloat)
-	local RGBAhex = {}
+function RGBA.floats2HexCodes(Color)
+	local hex = {}
 
-	for k, v in pairs(RGBAfloat) do
-		local hex = Conversion.Number.Float2Hex(v)
-		RGBAhex[k] = hex
+	for k, v in pairs(Color) do
+		local hex = Number.float2Hex(v)
+		hex[k] = hex
 	end
 
-	if RGBAhex.a == nil then RGBAhex.a = "FF" end
+	hex = hex.r .. hex.g .. hex.b .. hex.a
 
-    return RGBAhex
-
+    return hex
 end
 
-function Conversion.RGBA.Hex2Float(RGBAhex)
-    local RGBAfloat = {}
-
-	for k, v in pairs(RGBAhex) do
-		local float = Conversion.Number.Hex2Float(v)
-	    RGBAfloat[k] = float
-	end
-
-	return RGBAfloat
-
-end
-
-function Conversion.RGBA.ImportHex(Hex)
+function RGBA.hexCodes2Float(hexCode, Color)
 	local color = {}
-	color.r = string.sub(Hex, 1, 2)
-	color.g = string.sub(Hex, 3, 4)
-	color.b = string.sub(Hex, 5, 6)
+	for k, v in pairs(hexCode) do
+		local float = Number.hex2Float(v)
+	    color[k] = float
+	end
 
-	if string.len(Hex) == 8 then
-	  color.a = string.sub(Hex, 7, 8)
+	Color = Color or color
+	return Color
+end
+
+function RGBA.importHexCodes(Color, hexCode)
+	local color = {}
+	color.r = string.sub(hexCode, 1, 2)
+	color.g = string.sub(hexCode, 3, 4)
+	color.b = string.sub(hexCode, 5, 6)
+
+	if string.len(hexCode) == 8 then
+	  color.a = string.sub(hexCode, 7, 8)
 	else
 	  color.a = "FF"
 	end
 
-	color = Conversion.RGBA.Hex2Float(color)
-	return color
+	Color = RGBA.hex2Float(color)
+	return Color
 
 end
 
-function Conversion.Number.Float2Hex(Float)
+function Number.float2Hex(Float)
 	local hex = math.floor(256*Float + 0.5) - 1
 	local hex = string.format("%s", string.format("%x", hex))
 	
 	return hex
 end	
 
-function Conversion.Number.Hex2Float(Hex)
+function Number.hex2Float(Hex)
 	local float = "0x" .. Hex
 	local float = string.format("%f", float)/255
 	

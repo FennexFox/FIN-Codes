@@ -30,7 +30,7 @@ end
 
 function SignControl:SetColorPreset (ColorLayerPair)
   for k, v in pairs(ColorLayerPair) do
-    self[2][k] = Conversion.RGBA.ImportHex(v)
+    self[2][k] = RGBA.importHexCodes(v)
   end
 end
 
