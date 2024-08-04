@@ -1,4 +1,3 @@
----@diagnostic disable: empty-block
 local cabin = component.findComponent(classes.Build_Elevator_8x8_Master_C)[1]
 local controller = component.findComponent(classes.ComputerCase)[1]
 local doors = component.findComponent(classes.Door)
@@ -10,8 +9,7 @@ local eData = {floors = {}, moduleFloors = {}}
 cabin, controller = component.proxy(cabin, controller)
 doors, signs, iPanels = component.proxy(doors, signs, iPanels)
 
--- Initializing the Elevator system.
--- ToDo: auto-find components based on floorHeight in case of no matching Nicks
+-- Initializing the Elevator system
 
 for floor = 1, 20 do
   local floorHeight, floorName = cabin:getFloorInfo(floor-1)
@@ -76,6 +74,7 @@ for floor, floorData in pairs(eData.floors) do
 end
 
 -- Main loop
+
 local cHeight, cHeightPrev, cFloorTemp
 local dFloor, iFloor, isOpen
 
