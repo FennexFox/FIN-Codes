@@ -2,6 +2,7 @@ ElevatorSystem = {}
 
 function ElevatorSystem:New()
   local instance = {}
+  local colors = {ready = {1, 1, 1, 0.1}, coming = {0, 1, 0, 0.1}, away = {1, 0, 0, 0.1}}
 
   self.components = {
     cabin = component.findComponent(classes.Build_Elevator_8x8_Master_C)[1],
@@ -22,6 +23,8 @@ function ElevatorSystem:New()
     maxFloor = maxFloor or 20
     ceilingHeight = ceilingHeight*100 or 400
     self.eData.ceilingHeight = ceilingHeight
+
+    event.ignoreAll()
 
     for floor = 1, maxFloor do
       local floorHeight, floorName = self.components.cabin:getFloorInfo(floor-1)
@@ -92,37 +95,71 @@ function ElevatorSystem:New()
     end
   end
 
-  function self:standby(cFloor, iFloor, isOpen)
+  function self:setStanbyiPanel(iPanels, cFloor, floor)
+    local inColor, awayColor, readyColor = {0, 1, 0, 0.1}, {1, 0, 0, 0.1}, {1, 1, 1, 0.1}
+    for name, module in pairs(iPanels) do
+      if string.find(name, "Potentiometer") then
+      elseif string.find(name, "LargeMicroDIsplay") then
+        module:setText(cFloor .. "F")
+        module:setColor(table.unpack(colors.ready))
+      elseif string.find(name, "PushButton") then
+        if floor == cFloor then
+          module:setColor(table.unpack(colors.ready))
+        else
+          module:setColor(table.unpack(colors.away))
+        end
+      elseif string.find(name, "ModuleScreen") then
+      end
+    end
+  end
+
+  function self:setMovingiPanel(iPanels, cFloor, floor, cHeightDelta, dspText)
+    for name, module in pairs(iPanels) do
+      if string.find(name, "Potentiometer") then
+      elseif string.find(name, "LargeMicroDIsplay") then
+        local movingSymbol
+
+        if cHeightDelta > 0 then movingSymbol = " ▲ "
+        else movingSymbol = " ▼ "
+        end
+
+        module:setText(movingSymbol .. dspText .. "F" .. movingSymbol)
+        module:setColor(table.unpack(colors.ready))
+      elseif string.find(name, "PushButton") then
+        if cFloor == floor then
+          module:setColor(table.unpack(colors.coming))
+        else
+          module:setColor(table.unpack(colors.away))
+        end
+      elseif string.find(name, "ModuleScreen") then
+      end
+    end
+  end
+
+  function self:setDoors(doors, cFloor, floor, isOpen)
+    for _, door in pairs(doors) do
+      if floor == cFloor then
+        if isOpen > computer.time() - 6 then
+          if door:getConfiguration() ~= 2 then door:setConfiguration(2)
+          end
+        elseif
+          door:getConfiguration() ~= 0 then door:setConfiguration(0)
+        end
+      elseif floor ~= cFloor and door:getConfiguration() ~= 1 then
+        door:setConfiguration(1)
+      end
+    end
+  end
+
+  function self:standby(cFloor, isOpen)
+  	if not isOpen then isOpen = computer.time() end
+
     for floor, floorData in pairs(self.eData.floors) do
       for moduleType, comps in pairs(floorData.components) do
         if moduleType == "iPanels" then
-          for name, module in pairs(comps) do  
-            if string.find(name, "Potentiometer") then
-            elseif string.find(name, "LargeMicroDIsplay") then
-              module:setText(cFloor .. "F")
-              module:setColor(1, 1, 1, 0.1)
-            elseif string.find(name, "PushButton") then
-              if floor == cFloor then
-                module:setColor(1, 1, 1, 0.1)
-              else
-                module:setColor(1, 0, 0, 0.1)
-              end
-            elseif string.find(name, "ModuleScreen") then
-            end
-          end
+          self:setStanbyiPanel(comps, cFloor, floor)
         elseif moduleType == "doors" then
-          for _, door in pairs(comps) do
-            if floor == cFloor and door:getConfiguration() ~= 0 then
-              if not isOpen then
-                door:setConfiguration(2)
-                isOpen = computer.time()
-              else
-                door:setConfiguration(0)
-              end
-			      elseif floor ~= cFloor and door:getConfiguration() ~= 1 then
-			        door:setConfiguration(1)
-            end
-          end
+          self:setDoors(comps, cFloor, floor, isOpen)
         end
       end
     end
@@ -131,40 +168,21 @@ function ElevatorSystem:New()
 
   function self:driving(cFloor, dspText, cHeightDelta)
     local dspText = dspText or ""
+    local isOpen = nil
 
     for floor, floorData in ipairs(self.eData.floors) do
       local cHeight = self.components.cabin:getCurrentPlatformHeight()
       local fHeight = floorData.height - self.eData.floors[1].height
 
       if math.abs(fHeight - cHeight) < self.eData.ceilingHeight then dspText = floor end
-    end
 
-    for floor, floorData in ipairs(self.eData.floors) do
-      for name, module in pairs(floorData.components.iPanels) do
-        if string.find(name, "Potentiometer") then
-        elseif string.find(name, "LargeMicroDIsplay") then
-          local movingSymbol
-
-          if cHeightDelta > 0 then movingSymbol = " ▲ "
-          else movingSymbol = " ▼ "
-          end
-
-          module:setText(movingSymbol .. dspText .. "F" .. movingSymbol)
-          module:setColor(1, 1, 1, 0.1)
-        elseif string.find(name, "PushButton") then
-          if cFloor == floor then
-            module:setColor(0, 1, 0, 0.1)
-          else
-            module:setColor(1, 0, 0, 0.1)
-          end
-        elseif string.find(name, "ModuleScreen") then
-        end
-      end
+      self:setMovingiPanel(floorData.components.iPanels, cFloor, floor, cHeightDelta, dspText)
       for _, door in pairs(floorData.components.doors) do
         if door:getConfiguration() ~= 1 then door:setConfiguration(1) end
       end
     end
-    return dspText
+
+    return dspText, isOpen
   end
 
   function self:eventListener(deltaTime)
@@ -197,11 +215,6 @@ function ElevatorSystem:New()
       cHeight = self.components.cabin:GetCurrentPlatformHeight()
       cHeightDelta = cHeight - cHeightPrev
 
-      iFloor = iFloor or 1
-
-      if isOpen and computer.time() > isOpen + 60 then isOpen = nil end
-
-
       if event then
         if event.valueChanged then
           dFloor = event.valueChanged.value
@@ -212,9 +225,10 @@ function ElevatorSystem:New()
       end
 
       if math.abs(cHeightDelta) < deltaHeight then -- when cabin is not moving
-        isOpen = self:standby(cFloor, iFloor, isOpen)
+      	dFloor = dFloor or cFloor
+        isOpen = self:standby(cFloor, isOpen)
       else  -- when cabin is moving
-        dspText = self:driving(cFloor, dspText, cHeightDelta)
+        dspText, isOpen = self:driving(cFloor, dspText, cHeightDelta)
       end
     end
   end
