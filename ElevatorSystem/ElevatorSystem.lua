@@ -237,7 +237,10 @@ function ElevatorSystem:New()
   return instance
 end
 
+--[[
 Elev = ElevatorSystem:New()
+
 Elev:initializeComp(20, 4)
 Elev:initializeSystem()
 Elev:operate()
+]]--
