@@ -10,13 +10,10 @@ local timeStamp = {rp = 0, pp = 0, bp = 0, bs = 0, psp = 0}
 local maxTime = {rp = 0, pp = 0, bp = 90, bs = 0, psp = 0}
 
 function waitTimeLogistics(x)
-	local temp = x
-	if type(temp) ~= "number" then temp = math.maxinteger end
-	temp = math.exp(temp)
-	if type(temp) ~= "number" then temp = math.maxinteger end
-	temp = 1 / (1 + temp)
+	local temp = 1 / (1 + math.exp(x))
+
 	print("temp: " .. temp)
-	return temp + 0.5
+	return temp
 end
 
 for _, c in pairs(bpConnector) do
@@ -63,52 +60,57 @@ while true do
     end]]--
     for n, r in pairs(BioRecipes) do
 		event.pull(1)
-		if timeStamp.bp == 0 then timeStamp.bp = computer.time() end
 
 		if not bp:getRecipe() then bp:setRecipe(r) end
 		if not recipeData.bp then recipeData.bp = bp:getRecipe() end
 
 		local inputStack = bp:getInputInv():getStack(0)
-		local inputDemand, transferQue = r:getIngredients()[1].type, 0
-		local waitTime = recipeData.bp:getIngredients()[1].amount
+		local inputDemand = inputStack.item.type or recipeData.bp:getIngredients()[1].type
+		local inputAmount = recipeData.bp:getIngredients()[1].amount
+		local transferQue, waitTime
 
-		if waitTime == inputStack.count % waitTime then waitTime = 0
-		else waitTime = inputStack.count % waitTime
+		if inputAmount == inputStack.count % inputAmount then waitTime = 0
+		else waitTime = inputStack.count % inputAmount
 		end
 		print(waitTime)
 
---		waitTime = waitTime - (inputStack.count % waitTime)
-		waitTime = 1 / waitTime
+		waitTime = math.min(1 / waitTime, math.maxinteger)
 		print("wT2 " .. waitTime)
 		waitTime = waitTimeLogistics(waitTime)
 		print("wT1 " .. waitTime)
-		waitTime = waitTime * (maxTime.bp - recipeData.bp:getIngredients()[1].amount)
-		waitTime = waitTime + recipeData.bp.duration
+		waitTime = waitTime * (maxTime.bp - recipeData.bp.duration) + recipeData.bp.duration
 		print("wT " .. waitTime)
-
-		print(n .. " not matching with " .. bp:getRecipe().name .. "?")
-		print(r ~= bp:getRecipe())
 	
-		if r ~= bp:getRecipe() then
+		if r ~= recipeData.bp then
+			print(n .. " not matching with set recipe " .. recipeData.bp.name)
 			if inputStack.count < recipeData.bp:getIngredients()[1].amount then
-				if (computer.time() - timeStamp.bp) / 24 < math.max(10, waitTime) then
-					print("time not passed, jumping loop .. " .. (computer.time() - timeStamp.bp)/24)
+				if computer.magicTime() - timeStamp.bp < math.max(10, waitTime) then
+					print("time not passed, jumping loop .. " .. computer.magicTime() - timeStamp.bp)
 				else
+					print("time passed, switching recipe to " .. n)
 					bpConnector:addUnblockedTransfers(-1000)
-
-					print("not r , change bpConnector and recipe to " .. n)
-
+					--event.pull()
 					bpConnector.allowedItem = inputDemand
+					bpConnector:addUnblockedTransfers(inputAmount)
+
 					bp:setRecipe(r)
 					recipeData.bp = r
-					print(n)
 
-					timeStamp.bp = computer.time()
+					timeStamp.bp = computer.magicTime()
 				end
-			else
-				print("input in inputInv, jumping loop .. " .. (computer.time() - timeStamp.bp)/24)
 			end
-		elseif not r == recipeData.bp then
+		else
+			print(n .. "matching with set recipe " .. bp:getRecipe().name)
+			print("update unblockedTransfers .. " .. bpConnector.unblockedTransfers .." of item " .. bpConnector.allowedItem.name)
+
+			transferQue = math.max(recipeData.bp:getIngredients()[1].amount, inputStack.count % r:getIngredients()[1].amount)
+
+			bpConnector.allowedItem = recipeData.bp:getIngredients()[1].type
+			bpConnector:addUnblockedTransfers(transferQue - bpConnector.unblockedTransfers)
+
+			print("unblockedTransfers now " .. bpConnector.unblockedTransfers)
+		end
+--[[		elseif r ~= recipeData.bp then
 			print("proceed to set connector, timeStamp at" .. timeStamp.bp)
 			
 			if not bpConnector.allowedItem == inputDemand then bpConnector.allowedItem = inputDemand end
@@ -118,17 +120,9 @@ while true do
 				print("matching but time not passed, jumping loop .. " .. (computer.time() - timeStamp.bp)/24)
 			else
 				timeStamp.bp = computer.time()
-			end
-		end
-		transferQue = math.max(recipeData.bp:getIngredients()[1].amount, inputStack.count % r:getIngredients()[1].amount)
+			end]]--
 
-		bpConnector.allowedItem = recipeData.bp:getIngredients()[1].type
-		bpConnector:addUnblockedTransfers(transferQue - bpConnector.unblockedTransfers)
-
-		print(bpConnector.allowedItem.name)
-		print(bpConnector.unblockedTransfers)
-		print(waitTime)
-		print(math.max(10, waitTime) .. "-" .. (computer.time() - timeStamp.bp)/24)
+		print(math.min(10, waitTime) .. "-" .. computer.magicTime() - timeStamp.bp)
   	end
     --[[for n, r in pairs(PSRecipes) do
     	print(r.name)
