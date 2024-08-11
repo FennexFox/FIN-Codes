@@ -1,59 +1,263 @@
-local bp = component.proxy(component.findComponent("BiomassProcessor")[1])
-local ss = {instances = component.proxy(component.findComponent("SushiSplitter")), itemToFeed}
-local BioRecipes = {}
+---@alias	object				"an object, ya know" | table
+---@alias	component			"FIN component" | table
+---@alias	components			"array of components" | table
+---@alias	factoryConnector	"FIN factoryConnector" | table
+---@alias	proxyArray			"array of component proxies" | table
+---@alias	proxy				"FIN component proxy" | table
 
-local timeStamp = {bp = 0}
-local maxTime = {bp = 90}
+---@alias	itemType			"FIN itemType" | table
 
-function WaitTimeLogistics(x)
-	local temp = (1 / (1 + math.exp(-x))) - 0.5
+---@alias	itemStack
+---| 'count' # stack size in integer
+---| 'type'	# itemType
 
-	return temp
+---@alias	itemAmount
+---| 'amount' # item amount integer
+---| 'type'	# itemType
+
+---@alias	recipe				"FIN recipe" | table
+---@alias	recipes				"array of recipes" | table
+
+---@class	splitterPorts
+---| '0' # left port
+---| '1' # middle port
+---| '2' # right port
+
+---@class 	machineArray
+---| "proxy" # component proxy of manufacturers
+---| "timeStamp" # timeStamp of the last recipe change
+---| "demandNow" # itemAmount of recipe ingredient
+---| "recipeNow" # recipe now
+
+---@class	splitterArray
+---| "proxy" # component proxy of codeable splitters
+---| "feedport" # splitterPorts
+
+---@alias machineFeederPair "Tuple of [splitter] = machine" | table
+
+---@class recipeCycler
+---| "machines" # table Array of machine proxies
+---| "splitters" # table Array of splitter proxies
+---| "machineFeederPair" # "Tuple of [machine] = splitter"
+---| "recipes" # table Arrau of recipes
+RecipeCycler = {}
+
+---Recipe Cycler to use a single machine for multiple recipies with respective inputs <br>
+---Curretnly supports recipes with single input; will supports multiple inputs
+---@return recipeCycler
+function RecipeCycler:new()
+	local instance = {
+		machines = {},
+		splitters = {},
+		machineFeederPair = {},
+		recipes = {}
+	}
+
+	local tempLibraries = {} -- this shall be moved to external libraries someday
+
+	function self:initializingObjects(nick)
+		local temp = component.proxy(component.findComponent(nick))
+
+		for _, comp in pairs(temp) do
+			local className = comp:getType().name
+			if string.match(className, "Constructor") then
+				local temp = {proxy = comp, timeStamp = 0, demandNow = "", recipeNow = ""}
+				self.machines[comp.internalName] = temp
+				table.insert(self.machines, comp)
+			elseif string.match(className, "Splitter") then
+				local temp = {proxy = comp, feedport = {false, false, false}}
+				self.splitters[comp.internalName] = temp
+				table.insert(self.splitters, comp)
+			else
+				print("unidentified class " .. className .. " of " .. comp.internalName)
+			end
+
+			event.listen(comp)
+		end
+
+		for _, machine in ipairs(self.machines) do
+			local connection
+			for _, connector in ipairs(machine:getFactoryConnectors()) do
+				if connector.direction == 0 then connection = connector break end
+			end
+
+			local connected  = connection:getConnected().owner
+			local _, splitter, feedingPort = tempLibraries.getFactoryConnectors_R(connection, connected)
+			print(self.splitters[splitter.internalName].feedport[1+1])
+			print(feedingPort)
+			print("machine " .. machine.internalName .. " paired with " .. splitter.internalName)
+
+			self.splitters[splitter.internalName].feedport[feedingPort+1] = true
+
+			self.machineFeederPair[splitter.internalName] = machine
+		end
+	end
+
+---recursive function to establish machine-splitter pair
+---@param connection any
+---@param connected component
+---@param feedingPort integer
+---@return any
+---@return component
+---@return integer
+	function tempLibraries.getFactoryConnectors_R(connection, connected, feedingPort)
+		print(connection.internalName, " / ", connected)
+		local feedingPort = feedingPort or nil
+
+		if string.match(connected.internalName, "Conveyor") then
+			for _, connector in pairs(connected:getFactoryConnectors()) do
+				local connectionR = connector:getConnected()
+				local connectedR = connectionR.owner
+
+				connection, connected = tempLibraries.getFactoryConnectors_R(connectionR, connectedR, feedingPort)
+				if string.match(connected.internalName, "Splitter") then
+					_, _, feedingPort = string.find(connection.internalName, "Output(%d)")
+					break
+				end
+			end
+		end
+
+		return connection, connected, feedingPort
+	end
+
+	---Event listener that parses event message and returns data
+	---@param deltaTime number
+	---@return table
+	function tempLibraries.eventListener(deltaTime, filterString)
+		local filterString = filterString or nil
+		local event = {event.pull(deltaTime, filterString)}
+		local e, s, v, t, data = (function(e, s, v, ...)
+			return e, s, v, computer.magicTime(), {...}
+		end)(table.unpack(event))
+ 
+		if e then
+			event = {type = e, sender = s, value = v, time = t, otherData = data}
+		else
+			event = {type = "timeOut", time = t}
+		end
+		
+		return event
+	end
+
+---Defien recipes to cycle; include any string and exclude any string
+---@param includeString table
+---@param excludeString table
+---@return recipes
+	function self:defineRecipes(includeString, excludeString)
+		local recipes = {}
+		local recipeTemp = self.machines[1]:getRecipes()
+
+		for _, recipe in pairs(recipeTemp) do
+			for _, include in pairs(includeString) do
+				if string.find(recipe.name, include) then
+					recipes[recipe.name] = recipe
+					print(recipe.name .. " has added")
+				end
+			end
+		end
+
+		for name, _ in pairs(recipes) do
+			for _, exclude in pairs(excludeString) do
+				if string.find(name, exclude) then
+					recipes[name] = nil
+					print(name .. " has deleted")
+				end
+			end
+		end
+
+		return recipes
+	end
+
+---modified logistics function: -0.5 at -inf, 0 at 0, 0.5 at inf
+---@param x number
+---@return number
+	function tempLibraries.LogisticsF(x)
+		local temp = math.min(math.maxinteger, math.max(math.mininteger, x))
+		temp = (1 / (1 + math.exp(-x))) - 0.5
+	
+		return temp
+	end
+
+---Set CodeableSplitters which ports to feed and bleed
+---@param portsToFeed splitterPorts
+	function self:setSplitters(portsToFeed)
+		if #portsToFeed  < 1 then print("no feeding ports set!") return end
+		for i = 1, 3 do
+			for _, splitter in pairs(self.splitters) do
+				splitter.feedport[i] = portsToFeed[i] == not false
+				print("is port #" .. i .. " set to feed?: " .. splitter.feedport[i])
+			end
+		end
+	end
+
+---Transfer items with matching itemType to feedports, others to overflow
+---@param itemToFeed itemType
+	function self:runSplitters(itemInput, itemToFeed)
+		local outputPort, isOutput
+		for i = 1, 3 do
+			for k, splitter in pairs(self.splitters) do	
+				if type(k) == "number" then else
+				if itemInput == itemToFeed then
+					if splitter.feedport[i] then
+					outputPort = i
+					isOutput = splitter.proxy:transferItem(i-1)
+					end
+				else
+					if not splitter.feedport[i] then
+					outputPort = i
+					isOutput = splitter.proxy:transferItem(i-1)
+					end
+				end
+				end
+			end			
+		if isOutput then print(itemInput.name .. " sent to port #" .. outputPort) end
+		end
+	end
+
+---main loop of this thing
+---@param deltaTime number
+	function self:main(deltaTime)
+		while true do
+		local event = tempLibraries.eventListener(deltaTime)
+			if event.type == "ItemRequest" then -- transfer items
+				local s = event.sender
+				local v = s:getInput() -- event listener doesn't work, need to fix
+				local m = self.machineFeederPair[s.internalName]
+				
+				self:runSplitters(v.type, m:getRecipe():getIngredients()[1].type)
+
+				--self:runSplitters
+			elseif event.type == "timeOut" then -- cycle recipe
+			end
+			for _, s in ipairs(self.splitters) do
+				local m = self.machineFeederPair[s.internalName]
+				
+				self:runSplitters(s:getInput().type, m:getRecipe():getIngredients()[1].type)
+			end
+		end
+	end
+
+	setmetatable(instance, {__index = self})
+	return instance
 end
 
-event.listen(ss.instances[1])
+local a = RecipeCycler:new()
+a:initializingObjects("Remains")
+a:defineRecipes({"Protein"}, {"Biomass"})
+
+a:main(1)
+
+--[[
+local timeStamp = {bp = 0}
+
 
 function ss:operate(portsToFeed, Aux)
-	local portsToFeed = self.portsToFeed or portsToFeed
-	local portsToOverflow = self.portsToOverflow or {}
-	local itemToFeed = ss.itemToFeed or Aux
-	
-	if #portsToFeed  < 1 then print("no feeding ports set!") return end
-	if #portsToOverflow < 1 then
-		for i = 1, 3 do
-			if not portsToFeed[i] then portsToOverflow[i] = i end
-		end
-	end
-
-	for _, ss in pairs(self.instances) do
-		if ss:getInput().type == itemToFeed then
-			for i = 1, 3 do
-				if portsToFeed[i] then ss:transferItem(i) end
-			end
-		else
-			for i = 1, 3 do
-				if portsToOverflow[i] then ss:transferItem(i) end
-			end
-		end
-	end
-end
-
-Recipes = bp:getRecipes()
-
-for k, v in pairs(Recipes) do
-  if string.find(v.name, "Biomass") and not string.find(v.name, "Protein") then
-  	BioRecipes[v.name] = v
-  end
-end
 
 local recipeData = {}
 
 while true do
     for n, r in pairs(BioRecipes) do
 		event.pull(1)
-
-		if not bp:getRecipe() then bp:setRecipe(r) end
-		if not recipeData.bp then recipeData.bp = bp:getRecipe() end
 
 		local inputStack = bp:getInputInv():getStack(0)
 		local inputAmount = recipeData.bp:getIngredients()[1].amount
@@ -91,3 +295,4 @@ while true do
 		print(math.floor(math.max(10, waitTime)*100)/100 .. "-" .. computer.magicTime() - timeStamp.bp .. " @ " .. inputStack.count)
   	end
 end
+]]--
