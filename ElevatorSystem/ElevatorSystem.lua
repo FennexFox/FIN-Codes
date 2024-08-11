@@ -18,8 +18,12 @@ function ElevatorSystem:New()
 
   self.eData = {floors = {}, moduleFloors = {}, ceilingHeight = 0}
 
--- Initializing the Elevator system
-  function self:initializeComp(maxFloor, ceilingHeight)
+---Initializing the Elevator doors, Signs, IO Panels <br>
+---maxFloor starts from 1, not 0 <br>
+---cielingHeight defines how high each elevator stop floor is
+---@param maxFloor integer
+---@param ceilingHeight number
+function self:initializeComp(maxFloor, ceilingHeight)
     maxFloor = maxFloor or 20
     ceilingHeight = ceilingHeight*100 or 400
     self.eData.ceilingHeight = ceilingHeight
@@ -51,7 +55,7 @@ function ElevatorSystem:New()
             for a, v in pairs(module) do
               local key = v.internalName
               modules[key] = v
-              
+
               self.eData.moduleFloors[v.internalName] = floor
               self.eData.floors[floor].components.iPanels = self.eData.floors[floor].components.iPanels or {}
               self.eData.floors[floor].components.iPanels[key] = v
@@ -66,19 +70,19 @@ function ElevatorSystem:New()
     end
   end
 
--- Initializing eInterface Modules to current floor
+---Initializing eInterface System with modules
   function self:initializeSystem()
     local cFloor= self.components.cabin:getCurrentFloor()+1
 
     for floor, floorData in pairs(self.eData.floors) do
       local floorName = floorData.name
-    
+
       local prefabSign = self.components.signs[floor]:getPrefabSignData()
       local prefab1, prefab2 = prefabSign:getTextElements()
       prefab2 = {floorName, floor}
       prefabSign:setTextElements(prefab1, prefab2)
       self.components.signs[floor]:setPrefabSignData(prefabSign)
-    
+
       for _, modules in pairs(floorData.components) do
         for name, module in pairs(modules) do
           if string.find(name, "Potentiometer") then
@@ -95,6 +99,10 @@ function ElevatorSystem:New()
     end
   end
 
+---Set IO Panels when the cabin is not moving
+---@param iPanels table
+---@param cFloor integer
+---@param floor integer
   function self:setStanbyiPanel(iPanels, cFloor, floor)
     local inColor, awayColor, readyColor = {0, 1, 0, 0.1}, {1, 0, 0, 0.1}, {1, 1, 1, 0.1}
     for name, module in pairs(iPanels) do
@@ -113,6 +121,12 @@ function ElevatorSystem:New()
     end
   end
 
+---Set IO Panels when the cabin is moving
+---@param iPanels table
+---@param cFloor integer
+---@param floor integer
+---@param cHeightDelta number
+---@param dspText string
   function self:setMovingiPanel(iPanels, cFloor, floor, cHeightDelta, dspText)
     for name, module in pairs(iPanels) do
       if string.find(name, "Potentiometer") then
@@ -136,6 +150,11 @@ function ElevatorSystem:New()
     end
   end
 
+---Lock or open elevator doors
+---@param doors table
+---@param cFloor integer
+---@param floor integer
+---@param isOpen boolean
   function self:setDoors(doors, cFloor, floor, isOpen)
     for _, door in pairs(doors) do
       if floor == cFloor then
@@ -151,6 +170,10 @@ function ElevatorSystem:New()
     end
   end
 
+  ---Main loop when the cabin is not moving
+  ---@param cFloor integer
+  ---@param isOpen boolean
+  ---@return boolean
   function self:standby(cFloor, isOpen)
   	if not isOpen then isOpen = computer.time() end
 
@@ -166,15 +189,21 @@ function ElevatorSystem:New()
     return isOpen
   end
 
+---Main loop when the cabin is moving
+---@param cFloor integer
+---@param dspText string
+---@param cHeightDelta number
+---@return string
+---@return boolean
   function self:driving(cFloor, dspText, cHeightDelta)
     local dspText = dspText or ""
-    local isOpen = nil
+    local isOpen = false
 
     for floor, floorData in ipairs(self.eData.floors) do
       local cHeight = self.components.cabin:getCurrentPlatformHeight()
       local fHeight = floorData.height - self.eData.floors[1].height
 
-      if math.abs(fHeight - cHeight) < self.eData.ceilingHeight then dspText = floor end
+      if math.abs(fHeight - cHeight) < self.eData.ceilingHeight then dspText = tostring(floor) end
 
       self:setMovingiPanel(floorData.components.iPanels, cFloor, floor, cHeightDelta, dspText)
       for _, door in pairs(floorData.components.doors) do
@@ -185,6 +214,10 @@ function ElevatorSystem:New()
     return dspText, isOpen
   end
 
+---Event listener that parses event message and returns data
+---@param deltaTime number
+---@return table
+---@return integer
   function self:eventListener(deltaTime)
     local event = {event.pull(deltaTime)}
     if #event < 2 then
@@ -199,7 +232,9 @@ function ElevatorSystem:New()
     end
   end
 
--- Main loop
+---Main loop to control the elevator system
+---@param deltaTime number
+---@param deltaHeight number
   function self:operate(deltaTime, deltaHeight)
     local cHeight, cHeightPrev, dspText, dFloor, isOpen
     local deltaTime = deltaTime or 0.1
@@ -209,7 +244,7 @@ function ElevatorSystem:New()
       local event, iFloor = self:eventListener(deltaTime)
       local cFloor = self.components.cabin:getCurrentFloor()+1
       local cHeightDelta
-      
+
 
       cHeightPrev = cHeight or self.components.cabin:GetCurrentPlatformHeight()
       cHeight = self.components.cabin:GetCurrentPlatformHeight()
