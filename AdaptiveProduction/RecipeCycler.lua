@@ -61,12 +61,12 @@ function RecipeCycler:new()
 		for _, comp in pairs(temp) do
 			local className = comp:getType().name
 			if string.match(className, "Constructor") then
-				local temp = {proxy = comp, timeStamp = 0, demandNow = "", recipeNow = ""}
-				self.machines[comp.internalName] = temp
+				local machine = {proxy = comp, timeStamp = 0, demandNow = "", recipeNow = ""}
+				self.machines[comp.internalName] = machine
 				table.insert(self.machines, comp)
 			elseif string.match(className, "Splitter") then
-				local temp = {proxy = comp, feedport = {false, false, false}}
-				self.splitters[comp.internalName] = temp
+				local splitter = {proxy = comp, feedport = {false, false, false}, fedAmount = 0}
+				self.splitters[comp.internalName] = splitter
 				table.insert(self.splitters, comp)
 			else
 				print("unidentified class " .. className .. " of " .. comp.internalName)
@@ -83,23 +83,22 @@ function RecipeCycler:new()
 
 			local connected  = connection:getConnected().owner
 			local _, splitter, feedingPort = tempLibraries.getFactoryConnectors_R(connection, connected)
-			print(self.splitters[splitter.internalName].feedport[1+1])
-			print(feedingPort)
-			print("machine " .. machine.internalName .. " paired with " .. splitter.internalName)
+			if feedingPort then
+				print("machine " .. machine.internalName .. " paired with " .. splitter.internalName)
 
-			self.splitters[splitter.internalName].feedport[feedingPort+1] = true
-
-			self.machineFeederPair[splitter.internalName] = machine
+				self.splitters[splitter.internalName].feedport[feedingPort+1] = true
+				self.machineFeederPair[splitter.internalName] = machine
+			end
 		end
 	end
 
 ---recursive function to establish machine-splitter pair
 ---@param connection any
 ---@param connected component
----@param feedingPort integer
+---@param feedingPort integer | nil
 ---@return any
 ---@return component
----@return integer
+---@return integer | nil
 	function tempLibraries.getFactoryConnectors_R(connection, connected, feedingPort)
 		print(connection.internalName, " / ", connected)
 		local feedingPort = feedingPort or nil
@@ -117,7 +116,7 @@ function RecipeCycler:new()
 			end
 		end
 
-		return connection, connected, feedingPort
+		return connection, connected, tonumber(feedingPort)
 	end
 
 	---Event listener that parses event message and returns data
@@ -129,13 +128,16 @@ function RecipeCycler:new()
 		local e, s, v, t, data = (function(e, s, v, ...)
 			return e, s, v, computer.magicTime(), {...}
 		end)(table.unpack(event))
- 
+
 		if e then
 			event = {type = e, sender = s, value = v, time = t, otherData = data}
+			if e == "ItemRequest" then
+				event.value = event.sender:getInput()
+			end
 		else
-			event = {type = "timeOut", time = t}
+			event = {type = "timeOut", sender = "Ficsit_OS", value = "magicTime", time = t}
 		end
-		
+
 		return event
 	end
 
@@ -174,65 +176,69 @@ function RecipeCycler:new()
 	function tempLibraries.LogisticsF(x)
 		local temp = math.min(math.maxinteger, math.max(math.mininteger, x))
 		temp = (1 / (1 + math.exp(-x))) - 0.5
-	
+
 		return temp
 	end
 
----Set CodeableSplitters which ports to feed and bleed
----@param portsToFeed splitterPorts
-	function self:setSplitters(portsToFeed)
-		if #portsToFeed  < 1 then print("no feeding ports set!") return end
-		for i = 1, 3 do
-			for _, splitter in pairs(self.splitters) do
-				splitter.feedport[i] = portsToFeed[i] == not false
-				print("is port #" .. i .. " set to feed?: " .. splitter.feedport[i])
-			end
-		end
-	end
-
 ---Transfer items with matching itemType to feedports, others to overflow
----@param itemToFeed itemType
-	function self:runSplitters(itemInput, itemToFeed)
-		local outputPort, isOutput
-		for i = 1, 3 do
-			for k, splitter in pairs(self.splitters) do	
-				if type(k) == "number" then else
-				if itemInput == itemToFeed then
-					if splitter.feedport[i] then
-					outputPort = i
-					isOutput = splitter.proxy:transferItem(i-1)
-					end
-				else
-					if not splitter.feedport[i] then
-					outputPort = i
-					isOutput = splitter.proxy:transferItem(i-1)
+---@param itemInput itemType "itemType of the item the splitter catches"
+---@param itemToFeed itemType "itemType of the ingredient of set recipe"
+	function self:runSplitters(itemInput, itemToFeed, amountToFeed)
+	if type(itemInput) == "string" then itemInput = {name = itemInput} end
+	if type(itemToFeed) == "string" then itemToFeed = {name = itemToFeed} end
+
+	local isFeed = itemInput == itemToFeed
+	print("run for ", amountToFeed, " reps of ", itemToFeed.name, ", got ", itemInput.name)
+		for k, splitter in pairs(self.splitters) do
+			if type(k) == "number" then 
+			else
+--				local itemInInv = self.machineFeederPair[k]:getInputInv().itemCount
+				local fedAmount = splitter.fedAmount
+				for i = 1, 3 do
+					print("feedport " , i-1 , " isOpen: " , splitter.feedport[i], " isFeed: ", isFeed)
+					if isFeed then
+						print("feedingAmount " , amountToFeed - fedAmount)
+
+						if amountToFeed <= fedAmount then
+							splitter.fedAmount = 0
+							break
+						elseif splitter.feedport[i] and splitter.proxy:transferItem(i-1) then
+							print(itemInput.name .. " fed to port #" .. i-1)
+							fedAmount = fedAmount + 1
+							print(fedAmount, " items fed, ", amountToFeed - fedAmount, " items to feed")
+							break
+						end
+					elseif splitter.proxy:transferItem(i-1) then
+						print(itemInput.name .. " overflowed to port #" .. i-1)
+						break
 					end
 				end
-				end
-			end			
-		if isOutput then print(itemInput.name .. " sent to port #" .. outputPort) end
+				splitter.fedAmount = fedAmount
+			end
 		end
 	end
 
 ---main loop of this thing
 ---@param deltaTime number
 	function self:main(deltaTime)
+	local feedingAmount
 		while true do
 		local event = tempLibraries.eventListener(deltaTime)
+			print(event.type, event.value, event.sender)
 			if event.type == "ItemRequest" then -- transfer items
 				local s = event.sender
-				local v = s:getInput() -- event listener doesn't work, need to fix
 				local m = self.machineFeederPair[s.internalName]
-				
-				self:runSplitters(v.type, m:getRecipe():getIngredients()[1].type)
+				local inputItem = m:getRecipe():getIngredients()[1] -- currently only the first ingredient, would be configurable
 
-				--self:runSplitters
+				print(inputItem.type.name, event.value.type.name, inputItem.amount)
+
+				self:runSplitters(event.value.type, inputItem.type, inputItem.amount)
+			elseif event.type == "itemOutputted" then -- trace if there's items on the belt
+
+			elseif event.type == "ItemTransfer" then -- trace if there's items on the belt
+
 			elseif event.type == "timeOut" then -- cycle recipe
-			end
-			for _, s in ipairs(self.splitters) do
-				local m = self.machineFeederPair[s.internalName]
-				
-				self:runSplitters(s:getInput().type, m:getRecipe():getIngredients()[1].type)
+--				self:cycleRecipe(event.value)
 			end
 		end
 	end
@@ -241,11 +247,13 @@ function RecipeCycler:new()
 	return instance
 end
 
+
 local a = RecipeCycler:new()
 a:initializingObjects("Remains")
-a:defineRecipes({"Protein"}, {"Biomass"})
+a:defineRecipes({"Biomass"}, {"Alien"})
 
 a:main(1)
+
 
 --[[
 local timeStamp = {bp = 0}
