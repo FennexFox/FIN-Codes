@@ -218,6 +218,46 @@ function RecipeCycler:new()
 		end
 	end
 
+	function self:flushSplitters()
+		print("block splitters input and flush")
+		for k, splitter in pairs(self.splitters) do
+			if type(k) == "number" then
+			else
+				local temp = splitter.proxy:getFactoryConnectors()
+				for _, v in pairs(temp) do
+					if v.direction == 0 then
+						temp = v
+						break
+					end
+				end
+				if not temp.blocked == nil then temp.blocked = true end
+			end
+			for i = 1, 2 do
+				self:runSplitters("flush", "blockConnector", 3)
+			end
+		end
+	end
+
+	function self:unblock()
+		print("unblock splitter inputs")
+		for k, splitter in pairs(self.splitters) do
+			if type(k) == "number" then
+			else
+				local temp = splitter.proxy:getFactoryConnectors()
+				for _, v in pairs(temp) do
+					if v.direction == 0 then
+						temp = v
+						break
+					end
+				end
+				if not temp.blocked == nil then temp.blocked = false end
+			end
+			for i = 1, 2 do
+				self:runSplitters("flush", "unblockConnector", 3)
+			end
+		end
+	end
+
 ---main loop of this thing
 ---@param deltaTime number
 	function self:main(deltaTime)
@@ -239,6 +279,12 @@ function RecipeCycler:new()
 
 			elseif event.type == "timeOut" then -- cycle recipe
 --				self:cycleRecipe(event.value)
+			elseif event.type == "ChangeState" then
+				if event.value == true then
+					self:unblock()
+				else
+					self:flushSplitters()
+				end
 			end
 		end
 	end
@@ -247,6 +293,7 @@ function RecipeCycler:new()
 	return instance
 end
 
+event.listen(component.proxy(component.findComponent("CP")[1]):getModules()[1])
 
 local a = RecipeCycler:new()
 a:initializingObjects("Remains")
