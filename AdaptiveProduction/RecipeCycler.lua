@@ -95,7 +95,7 @@ function RecipeCycler:new(maxTime, minTime)
 			end
 
 			local connected  = connection:getConnected().owner
-			local _, splitter, feedingPort = tempLibraries.getFactoryConnectors_R(connection, connected)
+			local _, splitter, feedingPort = tempLibraries.getFactoryConnectors_R(connection, connected, _, nick)
 
 			if feedingPort then
 				print("machine " .. machine.proxy.internalName .. " paired with " .. splitter.internalName)
@@ -115,7 +115,7 @@ function RecipeCycler:new(maxTime, minTime)
 ---@return any
 ---@return component
 ---@return integer | nil
-function tempLibraries.getFactoryConnectors_R(connection, connected, feedingPort)
+function tempLibraries.getFactoryConnectors_R(connection, connected, feedingPort, group)
 	print(connection.internalName, " / ", connected)
 	local feedingPort = feedingPort or nil
 
@@ -124,7 +124,7 @@ function tempLibraries.getFactoryConnectors_R(connection, connected, feedingPort
 			local connectionR = connector:getConnected()
 			local connectedR = connectionR.owner
 
-			connection, connected = tempLibraries.getFactoryConnectors_R(connectionR, connectedR, feedingPort)
+			connection, connected = tempLibraries.getFactoryConnectors_R(connectionR, connectedR, feedingPort, group)
 			if string.match(connected.internalName, "Splitter") then
 				_, _, feedingPort = string.find(connection.internalName, "Output(%d)")
 				break
@@ -230,22 +230,23 @@ function self:runSplitters(itemInput, itemToFeed, amountToFeed)
 --				local itemInInv = self.machineFeederPair[k]:getInputInv().itemCount
 				local fedAmount = splitter.fedAmount
 				for i = 1, 3 do
-					print("feedport " , i-1 , " isOpen: " , splitter.feedport[i], " isFeed: ", isFeed)
-					if isFeed then
+					print("feedport " , i-1 , " isFeeder: " , splitter.feedport[i], " isFeed: ", isFeed)
+					if splitter.feedport[i] then
 						print("feedingAmount " , amountToFeed - fedAmount)
 
 						if amountToFeed <= fedAmount then
 							splitter.fedAmount = 0
 							break
-						elseif splitter.feedport[i] and splitter.proxy:transferItem(i-1) then
+						elseif isFeed and splitter.proxy:canOutput(i-1) then
+							splitter.proxy:transferItem(i-1)
 							print(itemInput.name .. " fed to port #" .. i-1)
 							fedAmount = fedAmount + 1
 							print(fedAmount, " items fed, ", amountToFeed - fedAmount, " items to feed")
 							break
 						end
-					elseif splitter.proxy:transferItem(i-1) then
+					elseif splitter.proxy:canOutput(i-1) then
+						splitter.proxy:transferItem(i-1)
 						print(itemInput.name .. " overflowed to port #" .. i-1)
-						break
 					end
 				end
 				splitter.fedAmount = fedAmount
@@ -266,15 +267,18 @@ function self:runSplitters(itemInput, itemToFeed, amountToFeed)
 
 			local timePassed = timeNow - machineFeederPair.timeStamp
 			local waitMore = inputCount > inputAmount or machine.proxy.progress > 0.01
+			
+			if waitMore then waitTime = waitTime + timePassed end
 
-			if timePassed < waitTime or waitMore then
-				print(timePassed, "s has passed with ",  recipes[machine.recipeOrder].name, ", ", waitTime - timePassed, "s more to wait ..")
+			if timePassed < waitTime then
+				print(timePassed, "s has passed with ",  recipes[machine.recipeOrder].name, ", ",
+				inputCount, " items in inputInv," ,  waitTime - timePassed, "s more to wait ..")
 			else
 				machine.recipeOrder = machine.recipeOrder % #recipes + 1
 				print(timePassed, "s has passed, switching recipe to " .. recipes[machine.recipeOrder].name)
 				machine.proxy:setRecipe(recipes[machine.recipeOrder])
 				self.machineFeederPair[k].timeStamp = computer.magicTime()
-				splitter.fedAmount = 0
+				self.splitters[k].fedAmount = 0
 			end
 		end
 
@@ -284,7 +288,7 @@ function self:runSplitters(itemInput, itemToFeed, amountToFeed)
 	function self:unstuck()
 		print("unstuck splitter inputs")
 		for _, splitter in pairs(self.splitters) do
-			self:runSplitters(splitter.proxy:getInput().type, "unblockConnector", 2)
+			self:runSplitters("it's stuck!", "unblockConnector", 2)
 		end
 	end
 
@@ -301,6 +305,7 @@ function self:runSplitters(itemInput, itemToFeed, amountToFeed)
 		while true do
 		local event = tempLibraries.eventListener(deltaTime)
 			print(event.type, event.value, event.sender)
+
 			if event.type == "ItemRequest" then -- transfer items
 				local s = event.sender
 				local m = self.machineFeederPair[s.internalName].machine
@@ -313,10 +318,10 @@ function self:runSplitters(itemInput, itemToFeed, amountToFeed)
 			elseif event.type == "ItemTransfer" then -- trace if there's items on the belt
 			
 			elseif event.type == "ProductionChanged" and event.value == 1 then
-				self.feederMachinePair[event.sender.internalName].timeStamp = computer.magicTime()
 
 			elseif event.type == "timeOut" then -- cycle recipe
 				self:cycleRecipe(self.recipes)
+				self:unstuck()
 			elseif event.type == "Trigger" then -- for easier testing
 				if string.find(event.sender.internalName, "Mushroom") then
 					self:resetFedAmount()
@@ -339,10 +344,11 @@ end
 local temp = component.proxy(component.findComponent("CP")[1]):getModules()
 for _, v in pairs(temp) do event.listen(v) end
 
-local a = RecipeCycler:new()
-a:initBuildables("Remains", {"Biomass"}, {"Alien", "Mycelia"})
+local a = RecipeCycler:new(90, 15)
+a:initBuildables("Biomass", {"Biomass"}, {"Alien", "Mycelia"})
 --a:defineRecipes({"Biomass"}, {"Alien"})
 
+event.clear()
 a:main(1)
 
 
@@ -395,3 +401,5 @@ while true do
   	end
 end
 ]]--
+
+-- cycleRecipe makes FeedingAmount negative, needs to fix
