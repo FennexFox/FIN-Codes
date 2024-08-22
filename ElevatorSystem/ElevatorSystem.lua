@@ -23,10 +23,10 @@ function ElevatorSystem:New()
 ---cielingHeight defines how high each elevator stop floor is
 ---@param maxFloor integer
 ---@param ceilingHeight number
-function self:initializeComp(maxFloor, ceilingHeight)
-    maxFloor = maxFloor or 20
+function self:initializeComp(ceilingHeight, maxFloor)
     ceilingHeight = ceilingHeight*100 or 400
     self.eData.ceilingHeight = ceilingHeight
+    maxFloor = maxFloor or 20
 
     event.ignoreAll()
 
@@ -41,12 +41,15 @@ function self:initializeComp(maxFloor, ceilingHeight)
           if door.location.z > floorHeight and door.location.z < floorHeight + ceilingHeight then
             self.eData.floors[floor].components.doors = self.eData.floors[floor].components.doors or {}
             table.insert(self.eData.floors[floor].components.doors, door)
+          else
+          	print("No Doors at Floor ", floor)
           end
         end
         for _, sign in pairs(self.components.signs) do
           if sign.location.z > floorHeight and sign.location.z < floorHeight + ceilingHeight then
             self.eData.floors[floor].components.signs = self.eData.floors[floor].components.signs or {}
             table.insert(self.eData.floors[floor].components.signs, sign)
+          else print("No Signage at Floor ", floor)
           end
         end
         for _, iPanel in pairs(self.components.iPanels) do
@@ -62,6 +65,7 @@ function self:initializeComp(maxFloor, ceilingHeight)
 
               event.listen(v)
             end
+          else print("No Interface Panel at Floor ", floor)
           end
         end
 
@@ -77,11 +81,12 @@ function self:initializeComp(maxFloor, ceilingHeight)
     for floor, floorData in pairs(self.eData.floors) do
       local floorName = floorData.name
 
-      local prefabSign = self.components.signs[floor]:getPrefabSignData()
-      local prefab1, prefab2 = prefabSign:getTextElements()
-      prefab2 = {floorName, floor}
-      prefabSign:setTextElements(prefab1, prefab2)
-      self.components.signs[floor]:setPrefabSignData(prefabSign)
+	  if not (#self.components.signs < floor) then
+	  	local prefabSign = self.components.signs[floor]:getPrefabSignData()
+
+	    prefabSign:setTextElements(prefabSign:getTextElements(), {floorName, floor})
+	    self.components.signs[floor]:setPrefabSignData(prefabSign)
+      end
 
       for _, modules in pairs(floorData.components) do
         for name, module in pairs(modules) do
@@ -158,7 +163,7 @@ function self:initializeComp(maxFloor, ceilingHeight)
   function self:setDoors(doors, cFloor, floor, isOpen)
     for _, door in pairs(doors) do
       if floor == cFloor then
-        if isOpen > computer.time() - 6 then
+        if isOpen > computer.magicTime() - 6 then
           if door:getConfiguration() ~= 2 then door:setConfiguration(2)
           end
         elseif
@@ -175,7 +180,7 @@ function self:initializeComp(maxFloor, ceilingHeight)
   ---@param isOpen boolean
   ---@return boolean
   function self:standby(cFloor, isOpen)
-  	if not isOpen then isOpen = computer.time() end
+  	if not isOpen then isOpen = computer.magicTime() end
 
     for floor, floorData in pairs(self.eData.floors) do
       for moduleType, comps in pairs(floorData.components) do
@@ -205,10 +210,17 @@ function self:initializeComp(maxFloor, ceilingHeight)
 
       if math.abs(fHeight - cHeight) < self.eData.ceilingHeight then dspText = tostring(floor) end
 
-      self:setMovingiPanel(floorData.components.iPanels, cFloor, floor, cHeightDelta, dspText)
-      for _, door in pairs(floorData.components.doors) do
-        if door:getConfiguration() ~= 1 then door:setConfiguration(1) end
-      end
+	  if not floorData.components.iPanels then print("No interface panel at Floor", floor)
+	  else
+	    self:setMovingiPanel(floorData.components.iPanels, cFloor, floor, cHeightDelta, dspText)
+	  end
+	  
+	  if not floorData.components.doors then print("No doors at Floor", floor)
+	  else
+	    for _, door in pairs(floorData.components.doors) do
+	      if door:getConfiguration() ~= 1 then door:setConfiguration(1) end
+	    end
+	  end
     end
 
     return dspText, isOpen
@@ -272,10 +284,8 @@ function self:initializeComp(maxFloor, ceilingHeight)
   return instance
 end
 
---[[
-Elev = ElevatorSystem:New()
+--[[Elev = ElevatorSystem:New()
 
-Elev:initializeComp(20, 4)
+Elev:initializeComp(5)
 Elev:initializeSystem()
-Elev:operate()
-]]--
+Elev:operate()]]
