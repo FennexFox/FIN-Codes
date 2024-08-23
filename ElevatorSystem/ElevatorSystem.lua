@@ -1,7 +1,7 @@
 ElevatorSystem = {}
 
-function ElevatorSystem:New()
-  local instance = {}
+function ElevatorSystem:New(elevName)
+  local instance = {name = elevName}
   local colors = {ready = {1, 1, 1, 0.1}, coming = {0, 1, 0, 0.1}, away = {1, 0, 0, 0.1}}
 
   self.components = {
@@ -11,9 +11,14 @@ function ElevatorSystem:New()
     signs = component.findComponent(classes.WidgetSign),
     iPanels = component.findComponent(classes.SizeableModulePanel)
   }
+  
+  self.graphics = {
+  	GPU = computer.getPCIDevices(classes.GPUT1)[1],
+  	screens = {}
+  }
 
-  for k1, comps in pairs(self.components) do
-  	self.components[k1] = component.proxy(comps)
+  for key, comps in pairs(self.components) do
+  	self.components[key] = component.proxy(comps)
   end
 
   self.eData = {floors = {}, moduleFloors = {}, ceilingHeight = 0}
@@ -55,13 +60,15 @@ function self:initializeComp(ceilingHeight, maxFloor)
         for _, iPanel in pairs(self.components.iPanels) do
           if iPanel.location.z > floorHeight and iPanel.location.z < floorHeight + self.eData.ceilingHeight then
             local module, modules = iPanel:getModules(), {}
-            for a, v in pairs(module) do
+            for _, v in pairs(module) do
               local key = v.internalName
               modules[key] = v
 
-              self.eData.moduleFloors[v.internalName] = floor
+              self.eData.moduleFloors[key] = floor
               self.eData.floors[floor].components.iPanels = self.eData.floors[floor].components.iPanels or {}
               self.eData.floors[floor].components.iPanels[key] = v
+              
+              if string.find(key, "Screen") then table.insert(self.graphics.screens, v) end
 
               event.listen(v)
             end
@@ -84,20 +91,22 @@ function self:initializeComp(ceilingHeight, maxFloor)
 	  if not (#self.components.signs < floor) then
 	  	local prefabSign = self.components.signs[floor]:getPrefabSignData()
 
-	    prefabSign:setTextElements(prefabSign:getTextElements(), {floorName, floor})
+	    prefabSign:setTextElements(prefabSign:getTextElements(), {self.name, floor.."F"})
 	    self.components.signs[floor]:setPrefabSignData(prefabSign)
       end
 
       for _, modules in pairs(floorData.components) do
         for name, module in pairs(modules) do
-          if string.find(name, "Potentiometer") then
-            module.min, module.max, module.value = 1, #self.eData.floors, cFloor
+          if string.find(name, "Pot") then
+            module.min, module.max, module.value = 1, #self.eData.floors, floor
+            module:setColor(1, 1, 1, 0.1)
           elseif string.find(name, "LargeMicroDIsplay") then
             module:setText(cFloor .. "F")
             module:setColor(1, 1, 1, 0.1)
           elseif string.find(name, "PushButton") then
             module:setColor(1, 1, 1, 0.1)
           elseif string.find(name, "ModuleScreen") then
+			self:drawScreens(module, floorName)
           end
         end
       end
@@ -175,6 +184,23 @@ function self:initializeComp(ceilingHeight, maxFloor)
     end
   end
 
+  ---Call this function after binding the target screen
+  ---@param targetScreen table module instance
+  ---@param text string texts to draw
+  ---@return boolean isBound the screen is bound correctly
+  function self:drawScreens(targetScreen, text)
+    local isBound = targetScreen == self.graphics.GPU:getScreen()
+    local GPU = self.graphics.GPU
+    if isBound then
+        GPU:setForeground(1, 1, 1, 0.1)
+        GPU:setBackground(0, 0, 0, 0)
+        GPU:setText(1, 1, text)
+        GPU:flush()
+    end
+    
+    return isBound
+  end
+
   ---Main loop when the cabin is not moving
   ---@param cFloor integer
   ---@param isOpen boolean
@@ -233,6 +259,7 @@ function self:initializeComp(ceilingHeight, maxFloor)
   function self:eventListener(deltaTime)
     local event = {event.pull(deltaTime)}
     if #event < 2 then
+      return {"Event too short!"}, 0
     else
       local e, s, v, iFloor, data = (function(e, s, v, ...)
         local iFloor = self.eData.moduleFloors[s.internalName]
@@ -284,8 +311,8 @@ function self:initializeComp(ceilingHeight, maxFloor)
   return instance
 end
 
---[[Elev = ElevatorSystem:New()
+Elev = ElevatorSystem:New("HUB Elevator")
 
 Elev:initializeComp(5)
 Elev:initializeSystem()
-Elev:operate()]]
+Elev:operate()
