@@ -1,7 +1,7 @@
 ElevatorSystem = {}
 
 function ElevatorSystem:New(elevName)
-  local instance = {name = elevName}
+  local instance = {name = elevName or "Elevator"}
   local colors = {ready = {1, 1, 1, 0.1}, coming = {0, 1, 0, 0.1}, away = {1, 0, 0, 0.1}}
 
   self.components = {
