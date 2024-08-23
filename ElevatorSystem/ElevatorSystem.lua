@@ -106,7 +106,7 @@ function self:initializeComp(ceilingHeight, maxFloor)
           elseif string.find(name, "PushButton") then
             module:setColor(1, 1, 1, 0.1)
           elseif string.find(name, "ModuleScreen") then
-			self:drawScreens(module, floorName)
+	    self:drawScreens(module, floorName)
           end
         end
       end
