@@ -1,7 +1,7 @@
 ElevatorSystem = {}
 
 function ElevatorSystem:New(elevName)
-  local instance = {name = elevName or "Elevator"}
+  local instance = {name = elevName}
   local colors = {ready = {1, 1, 1, 0.1}, coming = {0, 1, 0, 0.1}, away = {1, 0, 0, 0.1}}
 
   self.components = {
@@ -11,14 +11,9 @@ function ElevatorSystem:New(elevName)
     signs = component.findComponent(classes.WidgetSign),
     iPanels = component.findComponent(classes.SizeableModulePanel)
   }
-  
-  self.graphics = {
-  	GPU = computer.getPCIDevices(classes.GPUT1)[1],
-  	screens = {}
-  }
 
-  for key, comps in pairs(self.components) do
-  	self.components[key] = component.proxy(comps)
+  for k1, comps in pairs(self.components) do
+  	self.components[k1] = component.proxy(comps)
   end
 
   self.eData = {floors = {}, moduleFloors = {}, ceilingHeight = 0}
@@ -68,8 +63,6 @@ function self:initializeComp(ceilingHeight, maxFloor)
               self.eData.floors[floor].components.iPanels = self.eData.floors[floor].components.iPanels or {}
               self.eData.floors[floor].components.iPanels[key] = v
               
-              if string.find(key, "Screen") then table.insert(self.graphics.screens, v) end
-
               event.listen(v)
             end
           else print("No Interface Panel at Floor ", floor)
@@ -87,6 +80,7 @@ function self:initializeComp(ceilingHeight, maxFloor)
 
     for floor, floorData in pairs(self.eData.floors) do
       local floorName = floorData.name
+      local screens = {}
 
 	  if not (#self.components.signs < floor) then
 	  	local prefabSign = self.components.signs[floor]:getPrefabSignData()
@@ -105,8 +99,11 @@ function self:initializeComp(ceilingHeight, maxFloor)
             module:setColor(1, 1, 1, 0.1)
           elseif string.find(name, "PushButton") then
             module:setColor(1, 1, 1, 0.1)
-          elseif string.find(name, "ModuleScreen") then
-	    self:drawScreens(module, floorName)
+          elseif string.find(name, "TextDisplay") then
+          	module.size = 55
+          	module.monospace = false
+--          	module.text = "12345678901234"
+			module.text = "Pioneer\'s" .. string.char(10) .. "Quarter   / 4F "
           end
         end
       end
@@ -185,20 +182,17 @@ function self:initializeComp(ceilingHeight, maxFloor)
   end
 
   ---Call this function after binding the target screen
-  ---@param targetScreen table module instance
-  ---@param text string texts to draw
-  ---@return boolean isBound the screen is bound correctly
-  function self:drawScreens(targetScreen, text)
-    local isBound = targetScreen == self.graphics.GPU:getScreen()
+  function self:drawScreen(targetScreen, text)
     local GPU = self.graphics.GPU
-    if isBound then
-        GPU:setForeground(1, 1, 1, 0.1)
-        GPU:setBackground(0, 0, 0, 0)
-        GPU:setText(1, 1, text)
-        GPU:flush()
-    end
+    GPU:bindScreen(targetScreen)
+
+    local sizeX, sizeY = GPU:getSize()
+    print(GPU:getScreen().internalName)
     
-    return isBound
+    GPU:setForeground(1, 1, 1, 0.1)
+    GPU:setBackground(0, 0, 0, 0)
+    GPU:fill(0, 0, sizeX, sizeY, text)
+    GPU:flush()
   end
 
   ---Main loop when the cabin is not moving
@@ -259,7 +253,6 @@ function self:initializeComp(ceilingHeight, maxFloor)
   function self:eventListener(deltaTime)
     local event = {event.pull(deltaTime)}
     if #event < 2 then
-      return {"Event too short!"}, 0
     else
       local e, s, v, iFloor, data = (function(e, s, v, ...)
         local iFloor = self.eData.moduleFloors[s.internalName]
