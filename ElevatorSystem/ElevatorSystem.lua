@@ -94,14 +94,14 @@ function self:initializeComp(ceilingHeight, maxFloor)
 
       for _, modules in pairs(floorData.components) do
         for name, module in pairs(modules) do
-          if string.find(name, "Pot") then
-            module.min, module.max, module.value = 1, #self.eData.floors, floor
-            module:setColor(1, 1, 1, 0.1)
-          elseif string.find(name, "LargeMicroDIsplay") then
+          if string.find(name, "DisplaySquare") then
             module:setText(cFloor .. "F")
-            module:setColor(1, 1, 1, 0.1)
+            module:setColor(table.unpack(colors.ready))
+          elseif string.find(name, "LargeMicro") then
+            module:setText(cFloor .. "M")
+            module:setColor(table.unpack(colors.ready))
           elseif string.find(name, "PushButton") then
-            module:setColor(1, 1, 1, 0.1)
+            module:setColor(table.unpack(colors.ready))
           elseif string.find(name, "TextDisplay") then
 	          module.text = string.gsub(floorName, "%s", string.char(10))
           end
@@ -115,10 +115,17 @@ function self:initializeComp(ceilingHeight, maxFloor)
 ---@param cFloor integer
 ---@param floor integer
   function self:setStandbyiPanel(iPanels, cFloor, floor)
+    local floorData = self.eData.floors
+
     for name, module in pairs(iPanels) do
-      if string.find(name, "Pot") then
-      elseif string.find(name, "LargeMicroDIsplay") then
+      if string.find(name, "DisplaySquare") then
         module:setText(cFloor .. "F")
+        module:setColor(table.unpack(colors.ready))
+      elseif string.find(name, "LargeMicro") then
+        local fHeight = floorData[cFloor].height - self.eData.floors[1].height
+        fHeight = string.format("%02d", math.floor(fHeight/100 + 0.5))
+
+        module:setText(fHeight .. "M" .. "   ")
         module:setColor(table.unpack(colors.ready))
       elseif string.find(name, "PushButton") then
         if floor == cFloor then
@@ -127,7 +134,10 @@ function self:initializeComp(ceilingHeight, maxFloor)
           module:setColor(table.unpack(colors.away))
         end
       elseif string.find(name, "TextDisplay") then
-        module.text = string.gsub(self.eData.floors[cFloor].name, "%s", string.char(10))
+        local _, _, temp1, temp2 = string.find(self.eData.floors[cFloor].name, "(%a+)%s?(%a*)")
+        local temp = " " .. temp1
+
+        module.text = (temp .. string.char(10) .. " " .. temp2) or temp
       end
     end
   end
@@ -135,29 +145,43 @@ function self:initializeComp(ceilingHeight, maxFloor)
 ---Set IO Panels when the cabin is moving
 ---@param iPanels table
 ---@param cFloor integer
----@param floor integer
+---@param iFloor integer
+---@param cHeight number
 ---@param cHeightDelta number
 ---@param dspText string
-  function self:setMovingiPanel(iPanels, cFloor, floor, cHeightDelta, dspText)
+  function self:setMovingiPanel(iPanels, cFloor, iFloor, cHeight, cHeightDelta, dspText)
+    local cHeight = math.floor(cHeight/100 + 0.5)
+    local color
+
+    if (cHeight - self.components.cabin:GetCurrentPlatformHeight()) * cHeightDelta > 0 then
+      color = colors.coming
+    else
+      color = colors.away
+    end
     for name, module in pairs(iPanels) do
-      if string.find(name, "Potentiometer") then
-      elseif string.find(name, "LargeMicroDIsplay") then
+      if string.find(name, "DisplaySquare") then
+        module:setText(dspText .. "F")
+        module:setColor(table.unpack(colors.ready))
+      elseif string.find(name, "LargeMicro") then
         local movingSymbol
 
         if cHeightDelta > 0 then movingSymbol = " ▲ "
         else movingSymbol = " ▼ "
         end
 
-        module:setText(movingSymbol .. dspText .. "F" .. movingSymbol)
+        module:setText(string.format("%02d", cHeight) .. "M" .. movingSymbol)
         module:setColor(table.unpack(colors.ready))
       elseif string.find(name, "PushButton") then
-        if cFloor == floor then
-          module:setColor(table.unpack(colors.coming))
+        if cFloor == iFloor then
+          module:setColor(table.unpack(color))
         else
-          module:setColor(table.unpack(colors.away))
+          module:setColor(table.unpack(color))
         end
       elseif string.find(name, "TextDisplay") then
-        module.text = string.gsub(self.eData.floors[tonumber(dspText)].name, "%s", string.char(10))
+        local _, _, temp1, temp2 = string.find(self.eData.floors[tonumber(dspText)].name, "(%a+)%s?(%a*)")
+        local temp = " " .. temp1
+
+        module.text = (temp .. string.char(10) .. " " .. temp2) or temp
       end
     end
   end
@@ -180,20 +204,6 @@ function self:initializeComp(ceilingHeight, maxFloor)
         door:setConfiguration(1)
       end
     end
-  end
-
-  ---Call this function after binding the target screen
-  function self:drawScreen(targetScreen, text)
-    local GPU = self.graphics.GPU
-    GPU:bindScreen(targetScreen)
-
-    local sizeX, sizeY = GPU:getSize()
-    print(GPU:getScreen().internalName)
-    
-    GPU:setForeground(1, 1, 1, 0.1)
-    GPU:setBackground(0, 0, 0, 0)
-    GPU:fill(0, 0, sizeX, sizeY, text)
-    GPU:flush()
   end
 
   ---Main loop when the cabin is not moving
@@ -221,12 +231,11 @@ function self:initializeComp(ceilingHeight, maxFloor)
 ---@param cHeightDelta number
 ---@return string
 ---@return boolean
-  function self:driving(cFloor, dspText, cHeightDelta)
-    local dspText = dspText or nil
+  function self:driving(cFloor, iFloor, dspText, cHeightDelta)
     local isOpen = false
 
     for floor, floorData in ipairs(self.eData.floors) do
-      local cHeight = self.components.cabin:getCurrentPlatformHeight()
+      local cHeight = self.components.cabin:GetCurrentPlatformHeight()
       local fHeight = floorData.height - self.eData.floors[1].height
 
       if math.abs(fHeight - cHeight) < self.eData.ceilingHeight then dspText = tostring(floor) end
@@ -234,7 +243,7 @@ function self:initializeComp(ceilingHeight, maxFloor)
       if not floorData.components.iPanels then print("No interface panel at Floor", floor)
       else
         local dspText = dspText or cFloor
-        self:setMovingiPanel(floorData.components.iPanels, cFloor, floor, cHeightDelta, dspText)
+        self:setMovingiPanel(floorData.components.iPanels, cFloor, iFloor, cHeight, cHeightDelta, dspText)
       end
       
       if not floorData.components.doors then print("No doors at Floor", floor)
@@ -251,54 +260,53 @@ function self:initializeComp(ceilingHeight, maxFloor)
 ---Event listener that parses event message and returns data
 ---@param deltaTime number
 ---@return table
----@return integer
+---@return integer|nil
   function self:eventListener(deltaTime)
-    local event = {event.pull(deltaTime)}
+    local event, iFloor = {event.pull(deltaTime)}, nil
     if #event < 2 then
     else
-      local e, s, v, iFloor, data = (function(e, s, v, ...)
-        local iFloor = self.eData.moduleFloors[s.internalName]
+      local e, s, v, data = (function(e, s, v, ...)
           return e, s, v, iFloor, {...}
         end)(table.unpack(event))
 
+        iFloor = self.eData.moduleFloors[s.internalName]
       event[e] = {sender = s, value = v, from = iFloor, otherData = data}
     end
 
-    return event, event.from
+    return event, iFloor
   end
 
 ---Main loop to control the elevator system
 ---@param deltaTime number
 ---@param deltaHeight number
   function self:operate(deltaTime, deltaHeight)
-    local cHeight, cHeightPrev, dspText, dFloor, isOpen
-    local deltaTime = deltaTime or 0.1
-    local deltaHeight = deltaHeight or 1
+    local cHeight, cHeightPrev, dspText, isOpen
+    local deltaTime = deltaTime or 0.05
+    local deltaHeight = deltaHeight or 0.01
 
     while true do
       local event, iFloor = self:eventListener(deltaTime)
-      local cFloor = self.components.cabin:getCurrentFloor()+1
+      local cFloor = self.components.cabin:getCurrentFloor() + 1
       local cHeightDelta
 
       cHeightPrev = cHeight or self.components.cabin:GetCurrentPlatformHeight()
       cHeight = self.components.cabin:GetCurrentPlatformHeight()
       cHeightDelta = cHeight - cHeightPrev
-      dspText = dspText or iFloor
+
+      iFloor = iFloor or cFloor
 
       if event then
-        if event.valueChanged then
-          dFloor = event.valueChanged.value
-        elseif event.Trigger then
-          dFloor = dFloor or iFloor
-          self.components.cabin:MoveToFloor(dFloor-1)
+        if event.Trigger then
+          self.components.cabin:MoveToFloor(iFloor-1)
         end
       end
 
       if math.abs(cHeightDelta) < deltaHeight then -- when cabin is not moving
-      	dFloor = dFloor or cFloor
-        isOpen = self:standby(cFloor, isOpen)
+        isOpen = self:standby(iFloor, isOpen)
       else  -- when cabin is moving
-        dspText, isOpen = self:driving(cFloor, dspText, cHeightDelta)
+        dspText = dspText or tostring(cFloor)
+        dspText, isOpen = self:driving(cFloor, iFloor, dspText, cHeightDelta)
+        print(iFloor, cFloor)
       end
     end
   end
