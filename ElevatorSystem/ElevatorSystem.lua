@@ -244,12 +244,14 @@ end
 
     cHeight = math.floor(cHeight/100 + 0.5)
     for i = 1, #self.eData.floors - 1 do
-      local nBar = self.eData.floors[i+1].height / 2
-      local nHeight = cHeight - self.eData.floors[i].height
+      local nHeight = cHeight
+      local nBar = (self.eData.floors[i].height + self.eData.floors[i+1].height) / 2
       nHeight = nHeight - nBar
 
       if nHeight < 0 then nFloor = i break end
-    end	
+    end
+
+    nFloor = nFloor or #self.eData.floors
 
     for iFloor, floorData in ipairs(self.eData.floors) do
       if not floorData.components.iPanels then print("No interface panel at Floor", iFloor)
