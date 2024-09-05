@@ -23,13 +23,14 @@
 
 ---@class machineArray
 ---@field proxy proxy component proxy of manufacturers
----@field timeStamp number # timeStamp of the last recipe change
----@field demandNow itemAmount # itemAmount of recipe ingredient
 ---@field recipeNow recipe # recipe now
+---@field recipeOrder integer current iteration of recipes
 
 ---@class splitterArray
 ---@field proxy proxy component proxy of codeable splitters
----@field feedport integer splitterPorts
+---@field outputPort table information of each output ports
+---@field fedAmountTotal integer number of fedAmount for all outputPorts
+---@field portsToFeed integer number of outputPorts that feed machines
 
 ---@alias machineFeederPair "Tuple of [splitter] = machine" | table
 
@@ -41,43 +42,54 @@
 ---@field timeStamp number last time cycleRecipe() executed
 local RecipeCycler = {}
 
----comment
----@param maxTime number maximum time in seconds to wait before cycle to the next recipe
----@param minTime number minimum time in seconds to wait before cycle to the next recipe
 ---@return table
-function RecipeCycler:new(maxTime, minTime)
- local instance = {
-	machines = {},
-	splitters = {},
-	machineFeederPair = {},
-	feederMachinePair = {},
-	recipes = {},
-	maxTime = maxTime or 90,
-	minTime = minTime or 10,
-	timeStamp = 0
- 	}
+function RecipeCycler:new()
+ local instance, groupDict = {}, {}
 
  	local tempLibraries = {} -- this shall be moved to external libraries someday
 
-	function self:initBuildables(nick, includeString, excludeString)
-		local temp = component.proxy(component.findComponent(nick))
+	---@param nick string
+	---@param includeString table
+	---@param excludeString table
+	---@param maxTime integer
+	---@param minTime integer
+	function self:initGroup(nick, includeString, excludeString, maxTime, minTime)
+		local temps = component.proxy(component.findComponent(nick))
+		self[nick] = {
+			recipes = {},
+			machines = {},
+			splitters = {},
+			pairs = {},
+			maxTime = maxTime,
+			minTime = minTime,
+			timeStamp = computer.magicTime()
+		}
 
-		for _, comp in pairs(temp) do
+		self:initBuildables(nick, includeString, excludeString, temps)
+		self:pairBuildables(nick)
+	end
+
+	---@param nick string
+	---@param includeString table
+	---@param excludeString table
+	---@param comps proxyArray
+	function self:initBuildables(nick, includeString, excludeString, comps)
+		for _, comp in pairs(comps) do
 			local className = comp:getType().name
+			groupDict[comp.internalName] = nick
 
 			if string.match(className, "Constructor") then
-				local machine = {proxy = comp, timeStamp = 0, recipeNow = nil, recipeOrder = 1}
-				self.machines[comp.internalName] = machine
+				local machine = {proxy = comp, recipeNow = nil, recipeOrder = 1}
+				self[nick].machines[comp.internalName] = machine
 
-				if #self.recipes < 1 then
-				self.recipes = self:defineRecipes(comp, includeString, excludeString)
+				if #self[nick].recipes < 1 then
+				self[nick].recipes = self:defineRecipes(comp, includeString, excludeString)
 				end
 
-				self:setRecipes(machine, self.recipes)
-
+				self:setRecipes(machine, self[nick].recipes)
 			elseif string.match(className, "Splitter") then
 				local splitter = {proxy = comp, outputPort = {}, fedAmountTotal = 0, portsToFeed = 0}
-				self.splitters[comp.internalName] = splitter
+				self[nick].splitters[comp.internalName] = splitter
 			elseif string.match(className, "Merger") then -- not yet designed
 			else
 				print("unidentified class " , className .. " of " .. comp.internalName, " in group ", nick)
@@ -85,35 +97,44 @@ function RecipeCycler:new(maxTime, minTime)
 
 		event.listen(comp)
 		end
+	end
 
-		for _, machine in pairs(self.machines) do
+	---@param nick string
+	function self:pairBuildables(nick)
+		for machineName, machine in pairs(self[nick].machines) do
 			local connection
 			for _, connector in pairs(machine.proxy:getFactoryConnectors()) do
 				if connector.direction == 0 then connection = connector break end
 			end
 
 			local connected  = connection:getConnected().owner
-			local connection, splitter, feedingPort = tempLibraries.getFactoryConnectors_R(connection, connected, _, nick)
+			local connection, splitter, feedingPort = tempLibraries.getFactoryConnectors_R(connection, connected, nick)
 
 			if feedingPort then
 				local portNum
+				local splitterName = splitter.internalName
+
 				for i = 0, 2 do
 					if splitter:getConnectorByIndex(i).internalName == feedingPort then
 						portNum = i
 						break
 					end
 				end
-				print("machine", machine.proxy.internalName, "paired with", splitter.internalName, "at feedport", portNum)
 
-				self.splitters[splitter.internalName].outputPort[portNum] = {connection = connection, fedAmount = 0}
-				self.machineFeederPair[splitter.internalName] = {machine = machine, timeStamp = computer.magicTime()}
-				self.feederMachinePair[machine.proxy.internalName] = self.machineFeederPair[splitter.internalName]
+				print("machine", machine.proxy.internalName, "paired with", splitterName, "at feedport", portNum)
+				self[nick].splitters[splitterName].outputPort[portNum] = {connection = connection, fedAmount = 0}
+				self[nick].splitters[splitterName].portsToFeed = self[nick].splitters[splitterName].portsToFeed + 1
 
-				self.splitters[splitter.internalName].portsToFeed = self.splitters[splitter.internalName].portsToFeed + 1
+				local pair = {
+					splitter = self[nick].splitters[splitterName],
+					machine = self[nick].machines[machineName],
+					timeStamp = computer.magicTime()
+				}
+
+				self[nick].pairs[splitter.internalName] = pair
+				self[nick].pairs[machine.proxy.internalName] = pair
 			end
 		end
-
-		self.timeStamp = computer.magicTime()
 	end
 
 ---recursive function to establish machine-splitter pair
@@ -123,7 +144,7 @@ function RecipeCycler:new(maxTime, minTime)
 ---@return any
 ---@return component
 ---@return string | nil
-function tempLibraries.getFactoryConnectors_R(connection, connected, feedingPort,group)
+function tempLibraries.getFactoryConnectors_R(connection, connected, feedingPort, group)
 	print(connection.internalName, " / ", connected)
 	local feedingPort = feedingPort or nil
    
@@ -164,6 +185,7 @@ function tempLibraries.getFactoryConnectors_R(connection, connected, feedingPort
 	end
    
    ---Defien recipes to cycle; include any string and exclude any string
+   ---@param machineSample proxy
    ---@param includeString table
    ---@param excludeString table
    ---@return recipes
@@ -208,99 +230,95 @@ function tempLibraries.getFactoryConnectors_R(connection, connected, feedingPort
    ---@param inputAmount number item amount of the recipe's ingredient
    ---@param recipeDuration number duration of the recipe
    ---@return number time to wait in seconds
-	function self:waitTime(inputCount, inputAmount, recipeDuration)
+	function self:waitTime(inputCount, inputAmount, recipeDuration, groupName)
 		local temp = inputAmount - (inputCount % inputAmount)
 		temp = inputAmount / temp
 	
 		temp = math.min(math.maxinteger, math.max(math.mininteger, temp))
 		temp = (1 / (1 + math.exp(-temp+1))) - 0.5
-	
-		local waitTime = 2 * temp * (self.maxTime - recipeDuration) + recipeDuration
-		waitTime = math.max(self.minTime, waitTime)
+
+		local waitTime = 2 * temp * (self[groupName].maxTime - recipeDuration) + recipeDuration
+		waitTime = math.max(self[groupName].minTime, waitTime)
 	
 		return math.floor(waitTime*100+0.5)/100
 	end
    
    ---Transfer items with matching itemType to feedports, others to overflow
+   ---@param splitter splitterArray
    ---@param itemInput itemType | string "itemType of the item the splitter catches"
    ---@param itemToFeed itemType | string "itemType of the ingredient of set recipe"
-	function self:runSplitters(itemInput, itemToFeed, amountToFeed)
+   ---@param amountToFeed integer
+	function self:runSplitter(itemInput, itemToFeed, amountToFeed, splitter, groupName)
 		if type(itemInput) == "string" then itemInput = {name = itemInput} end
 		if type(itemToFeed) == "string" then itemToFeed = {name = itemToFeed} end
 	
 		local isFeed = itemInput == itemToFeed
 		print("run for ", amountToFeed, " reps of ", itemToFeed.name, ", got ", itemInput.name)
+
+		local splitterData = self[groupName].splitters[splitter.internalName]
 	
-		for k, splitter in pairs(self.splitters) do
-			if type(k) == "number" then
-			else
-				for i = 0, 2 do
-					local outputPort = splitter.proxy:getConnectorByIndex(i)
-					if outputPort.isConnected  then
-						if isFeed then
-							if splitter.outputPort[i] then
-								local feedPort = splitter.outputPort[i]
-								if amountToFeed > splitter.outputPort[i].fedAmount then
-									if  splitter.proxy:transferItem(i) then
-										print(itemInput.name, "fed to port", i)
-										feedPort.fedAmount = feedPort.fedAmount + 1
-										splitter.fedAmountTotal = splitter.fedAmountTotal + 1
-									end
-								end
-							elseif ((amountToFeed * splitter.portsToFeed) <= splitter.fedAmountTotal) then
-								if splitter.proxy:transferItem(i) then print(itemInput.name, "is", isFeed, "and overflew to port", i) end
+		for i = 0, 2 do
+			local outputPort = splitter:getConnectorByIndex(i)
+			if outputPort.isConnected  then
+				if isFeed then
+					if splitterData.outputPort[i] then
+						local feedPort = splitterData.outputPort[i]
+						if amountToFeed > splitterData.outputPort[i].fedAmount then
+							if  splitter:transferItem(i) then
+								print(itemInput.name, "fed to port", i)
+								feedPort.fedAmount = feedPort.fedAmount + 1
+								splitterData.fedAmountTotal = splitterData.fedAmountTotal + 1
 							end
-						elseif not splitter.outputPort[i] then
-							if splitter.proxy:transferItem(i) then print(itemInput.name, "is", isFeed, "and overflew to port", i) end
 						end
-					else
-						print("feedport", i, "is not connected!")
+					elseif ((amountToFeed * splitterData.portsToFeed) <= splitterData.fedAmountTotal) then
+						if splitter:transferItem(i) then print(itemInput.name, "is", isFeed, "and overflew to port", i) end
 					end
+				elseif not splitterData.outputPort[i] then
+					if splitter:transferItem(i) then print(itemInput.name, "is", isFeed, "and overflew to port", i) end
 				end
+			else print("feedport", i, "is not connected!")
 			end
 		end
 	end
  
-	function self:cycleRecipe(recipes)
+	function self:cycleRecipe(recipes, groupName)
 	local timeNow = computer.magicTime()
-		for k, splitter in pairs(self.splitters) do
-			local machineFeederPair = self.machineFeederPair[k]
-			local machine = machineFeederPair.machine
-			local machineRecipe = self.recipes[machine.recipeOrder]
-		
-			local inputCount = machine.proxy:getInputInv().itemCount
-			local inputAmount = machineRecipe:getIngredients()[1].amount
-			local waitTime = self:waitTime(inputCount, inputAmount, machineRecipe.duration)
-		
-			local timePassed = timeNow - machineFeederPair.timeStamp
-			local waitMore = (inputCount > inputAmount) or machine.proxy.progress > 0.01
-			
-			if waitMore then waitTime = waitTime + timePassed end
-		
-			if timePassed < waitTime then
-				print(timePassed, "s has passed with ",  recipes[machine.recipeOrder].name, ", ",
-				inputCount, " items in inputInv," ,  waitTime - timePassed, "s more to wait ..")
-			else
-				machine.recipeOrder = machine.recipeOrder % #recipes + 1
-				print(timePassed, "s has passed, switching recipe to " .. recipes[machine.recipeOrder].name)
-				machine.proxy:setRecipe(recipes[machine.recipeOrder])
-				self.machineFeederPair[k].timeStamp = computer.magicTime()
-				
-				splitter.fedAmountTotal = 0
-				for i = 0, 2 do
-					if self.splitters[k].outputPort[i] then self.splitters[k].outputPort[i].fedAmount = 0 end
-				end
-				
-				self:unstuck()
-			end
-		end
+	local group = self[groupName]
+	for machineName, machine in pairs(self[groupName].machines) do
+		local inputCount = machine.proxy:getInputInv().itemCount
+
+		local machineRecipe = group.recipes[machine.recipeOrder]
+		local inputAmount = machineRecipe:getIngredients()[1].amount
+		local waitTime = self:waitTime(inputCount, inputAmount, machineRecipe.duration, groupName)
 	
-	self.timeStamp = computer.magicTime()
+		local timePassed = timeNow - group.pairs[machineName].timeStamp
+		local waitMore = (inputCount > inputAmount) or machine.proxy.progress > 0.01
+		
+		if waitMore then waitTime = waitTime + timePassed end
+	
+		if timePassed < waitTime then
+			print(timePassed, "s has passed with ",  recipes[machine.recipeOrder].name, ", ",
+			inputCount, " items in inputInv," ,  waitTime - timePassed, "s more to wait ..")
+		else
+			machine.recipeOrder = machine.recipeOrder % #recipes + 1
+			print(timePassed, "s has passed, switching recipe to " .. recipes[machine.recipeOrder].name)
+			machine.proxy:setRecipe(recipes[machine.recipeOrder])
+
+			group.pairs[machineName].timeStamp = computer.magicTime()
+
+			for i = 0, 2 do
+				if group.pairs[machineName].splitter.outputPort[i] then group.pairs[machineName].splitter.outputPort[i].fedAmount = 0 end
+			end
+			
+			self:unstuck(groupName)
+		end
+	end
+
 	end
  
-	function self:unstuck()
+	function self:unstuck(groupName)
 		print("unstuck splitter inputs")
-		for _, splitter in pairs(self.splitters) do
+		for _, splitter in pairs(self[groupName].splitters) do
 			for i = 0, 2 do
 				if not splitter.outputPort[i] then splitter.proxy:transferItem(i) end
 			end
@@ -322,26 +340,29 @@ function tempLibraries.getFactoryConnectors_R(connection, connected, feedingPort
 		print(event.type, event.value, event.sender)
 		
 			if event.type == "ItemRequest" then -- transfer items
-				local s = event.sender
-				local m = self.machineFeederPair[s.internalName].machine
-				local recipe = m.recipeNow or m.proxy:getRecipe()
+				local splitterName = event.sender.internalName
+				local groupName = groupDict[splitterName]
+				local machine = self[groupName].pairs[splitterName].machine
+				local recipe = machine.recipeNow or machine.proxy:getRecipe()
 				local inputItem = recipe:getIngredients()[1] -- currently only the first ingredient, would be configurable
 			
-				self:runSplitters(event.value.type, inputItem.type, inputItem.amount * feedMultiplier)
-				elseif event.type == "ItemOutputted" then -- trace if there's items on the belt
-					if self.timeStamp + deltaTime <= computer.magicTime() then
-						self:cycleRecipe(self.recipes)
-					end
-			
-				elseif event.type == "ItemTransfer" then -- trace if there's items on the belt
+				self:runSplitter(event.value.type, inputItem.type, inputItem.amount * feedMultiplier, event.sender, groupName)
+			elseif event.type == "ItemOutputted" then -- trace if there's items on the belt
+				local groupName = groupDict[event.sender.internalName]
+				local timeStamp = self[groupName].pairs[event.sender.internalName].timeStamp
+				if timeStamp + deltaTime <= computer.magicTime() then
+					self:cycleRecipe(self[groupName].recipes, groupName)
+				end
+		
+			elseif event.type == "ItemTransfer" then -- trace if there's items on the belt
 
-				elseif event.type == "ProductionChanged" and event.value == 1 then
-			
-				elseif event.type == "timeOut" then -- cycle recipe
-					if self.timeStamp + deltaTime <= computer.magicTime() then
-						self:cycleRecipe(self.recipes)
-					end
-				elseif event.type == "Trigger" then -- for easier testing
+			elseif event.type == "ProductionChanged" and event.value == 1 then
+		
+			elseif event.type == "timeOut" then -- cycle recipe
+				for groupName, group in pairs(self) do
+					self:cycleRecipe(self[groupName].recipes, groupName)
+				end
+			elseif event.type == "Trigger" then -- for easier testing
 			end
 		end
 	end
@@ -350,8 +371,11 @@ function tempLibraries.getFactoryConnectors_R(connection, connected, feedingPort
   return instance
 end
  
-local a = RecipeCycler:new(90, 5)
-a:initBuildables("Biomass", {"Biomass"}, {"Protein", "Mycelia"})
+local a = RecipeCycler:new()
+a:initGroup("Biomass", {"Biomass"}, {"Protein", "Mycelia"}, 90, 5)
+a:initGroup("Alien", {"Protein"}, {"Biomass"}, 90, 5)
 
 event.clear()
 a:main(1, 10)
+
+-- check amountToFeed, fedAmount and fedAmountTotal
