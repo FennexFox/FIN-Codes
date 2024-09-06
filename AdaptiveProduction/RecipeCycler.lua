@@ -34,12 +34,6 @@
 
 ---@alias machineFeederPair "Tuple of [splitter] = machine" | table
 
----@class recipeCycler
----@field machines proxyArray table Array of machine proxies
----@field splitters proxyArray table Array of splitter proxies
----@field machineFeederPair machineFeederPair
----@field recipes recipes
----@field timeStamp number last time cycleRecipe() executed
 local RecipeCycler = {}
 
 ---@return table
@@ -230,33 +224,33 @@ function tempLibraries.getFactoryConnectors_R(connection, connected, feedingPort
    ---@param inputAmount number item amount of the recipe's ingredient
    ---@param recipeDuration number duration of the recipe
    ---@return number time to wait in seconds
-	function self:waitTime(inputCount, inputAmount, recipeDuration, groupName)
+	function self:waitTime(inputCount, inputAmount, recipeDuration, group)
 		local temp = inputAmount - (inputCount % inputAmount)
 		temp = inputAmount / temp
 	
 		temp = math.min(math.maxinteger, math.max(math.mininteger, temp))
 		temp = (1 / (1 + math.exp(-temp+1))) - 0.5
 
-		local waitTime = 2 * temp * (self[groupName].maxTime - recipeDuration) + recipeDuration
-		waitTime = math.max(self[groupName].minTime, waitTime)
+		local waitTime = 2 * temp * (group.maxTime - recipeDuration) + recipeDuration
+		waitTime = math.max(group.minTime, waitTime)
 	
 		return math.floor(waitTime*100+0.5)/100
 	end
    
    ---Transfer items with matching itemType to feedports, others to overflow
-   ---@param splitter splitterArray
+   ---@param splitterData splitterArray
    ---@param itemInput itemType | string "itemType of the item the splitter catches"
    ---@param itemToFeed itemType | string "itemType of the ingredient of set recipe"
    ---@param amountToFeed integer
-	function self:runSplitter(itemInput, itemToFeed, amountToFeed, splitter, groupName)
+	function self:runSplitter(itemInput, itemToFeed, amountToFeed, splitterData)
 		if type(itemInput) == "string" then itemInput = {name = itemInput} end
 		if type(itemToFeed) == "string" then itemToFeed = {name = itemToFeed} end
 	
 		local isFeed = itemInput == itemToFeed
 		print("run for ", amountToFeed, " reps of ", itemToFeed.name, ", got ", itemInput.name)
 
-		local splitterData = self[groupName].splitters[splitter.internalName]
 	
+		local splitter = splitterData.proxy
 		for i = 0, 2 do
 			local outputPort = splitter:getConnectorByIndex(i)
 			if outputPort.isConnected  then
@@ -270,7 +264,7 @@ function tempLibraries.getFactoryConnectors_R(connection, connected, feedingPort
 								splitterData.fedAmountTotal = splitterData.fedAmountTotal + 1
 							end
 						end
-					elseif ((amountToFeed * splitterData.portsToFeed) <= splitterData.fedAmountTotal) then
+					elseif (amountToFeed * splitterData.portsToFeed) <= splitterData.fedAmountTotal then
 						if splitter:transferItem(i) then print(itemInput.name, "is", isFeed, "and overflew to port", i) end
 					end
 				elseif not splitterData.outputPort[i] then
@@ -281,15 +275,15 @@ function tempLibraries.getFactoryConnectors_R(connection, connected, feedingPort
 		end
 	end
  
-	function self:cycleRecipe(recipes, groupName)
+	function self:cycleRecipe(recipes, group)
 	local timeNow = computer.magicTime()
-	local group = self[groupName]
-	for machineName, machine in pairs(self[groupName].machines) do
+
+	for machineName, machine in pairs(group.machines) do
 		local inputCount = machine.proxy:getInputInv().itemCount
 
 		local machineRecipe = group.recipes[machine.recipeOrder]
 		local inputAmount = machineRecipe:getIngredients()[1].amount
-		local waitTime = self:waitTime(inputCount, inputAmount, machineRecipe.duration, groupName)
+		local waitTime = self:waitTime(inputCount, inputAmount, machineRecipe.duration, group)
 	
 		local timePassed = timeNow - group.pairs[machineName].timeStamp
 		local waitMore = (inputCount > inputAmount) or machine.proxy.progress > 0.01
@@ -305,20 +299,21 @@ function tempLibraries.getFactoryConnectors_R(connection, connected, feedingPort
 			machine.proxy:setRecipe(recipes[machine.recipeOrder])
 
 			group.pairs[machineName].timeStamp = computer.magicTime()
+			group.pairs[machineName].splitter.fedAmountTotal = 0
 
 			for i = 0, 2 do
 				if group.pairs[machineName].splitter.outputPort[i] then group.pairs[machineName].splitter.outputPort[i].fedAmount = 0 end
 			end
 			
-			self:unstuck(groupName)
+			self:unstuck(group)
 		end
 	end
 
 	end
  
-	function self:unstuck(groupName)
+	function self:unstuck(group)
 		print("unstuck splitter inputs")
-		for _, splitter in pairs(self[groupName].splitters) do
+		for _, splitter in pairs(group.splitters) do
 			for i = 0, 2 do
 				if not splitter.outputPort[i] then splitter.proxy:transferItem(i) end
 			end
@@ -342,16 +337,21 @@ function tempLibraries.getFactoryConnectors_R(connection, connected, feedingPort
 			if event.type == "ItemRequest" then -- transfer items
 				local splitterName = event.sender.internalName
 				local groupName = groupDict[splitterName]
-				local machine = self[groupName].pairs[splitterName].machine
-				local recipe = machine.recipeNow or machine.proxy:getRecipe()
+				local machineData = self[groupName].pairs[splitterName].machine
+				local splitterData = self[groupName].pairs[splitterName].splitter
+
+				local recipe = machineData.recipeNow or machineData.proxy:getRecipe()
 				local inputItem = recipe:getIngredients()[1] -- currently only the first ingredient, would be configurable
 			
-				self:runSplitter(event.value.type, inputItem.type, inputItem.amount * feedMultiplier, event.sender, groupName)
+				self:runSplitter(event.value.type, inputItem.type, inputItem.amount * feedMultiplier, splitterData)
 			elseif event.type == "ItemOutputted" then -- trace if there's items on the belt
+				local splitterName = event.sender.internalName
 				local groupName = groupDict[event.sender.internalName]
-				local timeStamp = self[groupName].pairs[event.sender.internalName].timeStamp
+				local group = self[groupName]
+				local timeStamp = group.pairs[splitterName].timeStamp
+
 				if timeStamp + deltaTime <= computer.magicTime() then
-					self:cycleRecipe(self[groupName].recipes, groupName)
+					self:cycleRecipe(self[groupName].recipes, group)
 				end
 		
 			elseif event.type == "ItemTransfer" then -- trace if there's items on the belt
@@ -359,8 +359,8 @@ function tempLibraries.getFactoryConnectors_R(connection, connected, feedingPort
 			elseif event.type == "ProductionChanged" and event.value == 1 then
 		
 			elseif event.type == "timeOut" then -- cycle recipe
-				for groupName, group in pairs(self) do
-					self:cycleRecipe(self[groupName].recipes, groupName)
+				for _, group in pairs(self) do
+					self:cycleRecipe(group.recipes, group)
 				end
 			elseif event.type == "Trigger" then -- for easier testing
 			end
