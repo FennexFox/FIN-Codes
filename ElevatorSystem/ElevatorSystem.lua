@@ -333,5 +333,7 @@ end
   return instance
 end
 
+--[[
 Elev = ElevatorSystem:New("HUB Elevator", {deltaTime = 0.1, deltaHeight = 0.1, ceilingHeight = 5})
 Elev:operate()
+]]--
