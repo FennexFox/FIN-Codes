@@ -178,6 +178,7 @@ function RecipeCycler:new()
 
 	function self:runSplitter(itemInput, itemToFeed, amountToFeed, splitterData)
 		local isFeed = itemInput == itemToFeed
+		local amountToFeed = math.min(amountToFeed, itemToFeed.max)
 
 		local splitter = splitterData.proxy
 		for i = 0, 2 do
@@ -207,26 +208,29 @@ function RecipeCycler:new()
 
 	for machineName, machine in pairs(group.machines) do
 		local inputCount = machine.proxy:getInputInv().itemCount
+		local pair = group.pairs[machineName]
 
 		local machineRecipe = group.recipes[machine.recipeOrder]
 		local inputAmount = machineRecipe:getIngredients()[1].amount
 		local waitTime = self:waitTime(inputCount, inputAmount, machineRecipe.duration, group)
 
-		local timePassed = timeNow - group.pairs[machineName].timeStamp
+		local timePassed = timeNow - pair.timeStamp
 		local waitMore = (inputCount >= inputAmount) or (machine.state == 1)
 
 		if waitMore then
-			group.pairs[machineName].timeStamp = computer.magicTime()
+			pair.timeStamp = computer.magicTime()
 		elseif timePassed > waitTime then
 			machine.recipeOrder = machine.recipeOrder % #recipes + 1
 			print(timePassed, "s has passed, switching recipe to " .. recipes[machine.recipeOrder].name)
 			machine.proxy:setRecipe(recipes[machine.recipeOrder])
 
-			group.pairs[machineName].timeStamp = computer.magicTime()
-			group.pairs[machineName].splitter.fedAmountTotal = 0
+			pair.timeStamp = computer.magicTime()
+			pair.splitter.fedAmountTotal = 0
 
 			for i = 0, 2 do
-				if group.pairs[machineName].splitter.outputPort[i] then group.pairs[machineName].splitter.outputPort[i].fedAmount = 0 end
+				if pair.splitter.outputPort[i] then
+					pair.splitter.outputPort[i].fedAmount = 0
+				end
 			end
 
 			self:unstuck(group)
@@ -242,14 +246,6 @@ function RecipeCycler:new()
 			end
 		end
 	end
-
-	function self:resetFedAmount()
-		for _, splitter in pairs(self.splitters) do
-			splitter.fedAmount = 0
-		end
-	end
-
-
 
 	function self:main(deltaTime, feedMultiplier)
 
