@@ -69,16 +69,17 @@ function RecipeCycler:new()
 				end
 
 				print("machine", machine.proxy.internalName, "paired with", splitterName, "at feedport", portNum)
-				self[nick].splitters[splitterName].outputPort[portNum] = {connection = connection, fedAmount = 0}
+				self[nick].splitters[splitterName].outputPort[portNum] = {connection = connection, fedAmount = 0, machine = machine.proxy}
 				self[nick].splitters[splitterName].portsToFeed = self[nick].splitters[splitterName].portsToFeed + 1
 
 				local pair = {
 					splitter = self[nick].splitters[splitterName],
 					machine = self[nick].machines[machineName],
+					portNum = portNum,
 					timeStamp = computer.magicTime()
 				}
 
-				self[nick].pairs[splitter.internalName] = pair
+				self[nick].pairs[splitter.internalName] = {[portNum] = pair}
 				self[nick].pairs[machine.proxy.internalName] = pair
 			end
 		end
@@ -121,8 +122,6 @@ function RecipeCycler:new()
 		return event
 	end
 
-
-
 	function self:defineRecipes(machineSample, includeString, excludeString)
 		local recipeTemp1, recipeTemp2 = {}, machineSample:getRecipes()
 		local recipes = {}
@@ -159,8 +158,6 @@ function RecipeCycler:new()
 		if not (getRecipe == setRecipe) then machine.proxy:setRecipe(setRecipe) end
 	end
 
-
-
 	function self:waitTime(inputCount, inputAmount, recipeDuration, group)
 		local temp = inputAmount - (inputCount % inputAmount)
 		temp = inputAmount / temp
@@ -173,8 +170,6 @@ function RecipeCycler:new()
 
 		return math.floor(waitTime*100+0.5)/100
 	end
-
-
 
 	function self:runSplitter(itemInput, itemToFeed, amountToFeed, splitterData)
 		local isFeed = itemInput == itemToFeed
@@ -209,13 +204,14 @@ function RecipeCycler:new()
 	for machineName, machine in pairs(group.machines) do
 		local inputCount = machine.proxy:getInputInv().itemCount
 		local pair = group.pairs[machineName]
+		print(pair.splitter.fedAmountTotal)
 
 		local machineRecipe = group.recipes[machine.recipeOrder]
 		local inputAmount = machineRecipe:getIngredients()[1].amount
 		local waitTime = self:waitTime(inputCount, inputAmount, machineRecipe.duration, group)
 
 		local timePassed = timeNow - pair.timeStamp
-		local waitMore = (inputCount >= inputAmount) or (machine.state == 1)
+		local waitMore = (inputCount >= inputAmount) or machine.proxy.progress > 0.1
 
 		if waitMore then
 			pair.timeStamp = computer.magicTime()
@@ -255,8 +251,15 @@ function RecipeCycler:new()
 			if event.type == "ItemRequest" then -- transfer items
 				local splitterName = event.sender.internalName
 				local group = self[groupDict[splitterName]]
-				local machineData = group.pairs[splitterName].machine
-				local splitterData = group.pairs[splitterName].splitter
+				local splitterData = group.splitters[splitterName]
+				local machineData
+
+				for i = 0, 2 do
+					if group.pairs[splitterName][i] then
+						machineData = group.pairs[splitterName][i].machine
+						break
+					end
+				end
 
 				local recipe = machineData.recipeNow or machineData.proxy:getRecipe()
 				local inputItem = recipe:getIngredients()[1] -- currently only the first ingredient, would be configurable
@@ -265,7 +268,14 @@ function RecipeCycler:new()
 			elseif event.type == "ItemOutputted" then -- trace if there's items on the belt
 				local splitterName = event.sender.internalName
 				local group = self[groupDict[splitterName]]
-				local timeStamp = group.pairs[splitterName].timeStamp
+				local timeStamp
+
+				for i = 0, 2 do
+					if group.pairs[splitterName][i] then
+						timeStamp = group.pairs[splitterName][i].timeStamp
+						break
+					end
+				end
 
 				if timeStamp + deltaTime <= computer.magicTime() then
 					self:cycleRecipe(group.recipes, group)
@@ -292,10 +302,7 @@ function RecipeCycler:new()
 end
 
 local SushiBelt = RecipeCycler:new()
-SushiBelt:initGroup("Biomass", {"Biomass"}, {"Protein"}, 20, 5)
-SushiBelt:initGroup("Alien", {"Protein"}, {"Biomass"}, 10, 5)
-SushiBelt:initGroup("PowerShard", {"Power"}, {}, 10, 5)
-SushiBelt:initGroup("misc", {"Color", "Concrete", "Silica", "Solid", "DNA", "Ingot"}, {"Pure"}, 60, 5)
+SushiBelt:initGroup("Biomass", {"Biomass"}, {"Protein", "Mycelia"}, 20, 5)
 
 event.clear()
 SushiBelt:main(1, 100)
