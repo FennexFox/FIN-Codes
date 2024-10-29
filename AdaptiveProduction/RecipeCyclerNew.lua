@@ -2,12 +2,17 @@
 local portsDirection = {left = 1, middle = 2, right = 3}
 
 ---@class recipe
+---@field duration number
+---@field name string
+local recipe = {}
 
 ---@class itemAmount
 ---@field type table
 ---@field amount integer
 
 ---@class itemType
+---@field max integer
+---@field name string
 
 ---@class FINproxy proxy of FIN component
 
@@ -197,7 +202,7 @@ function splitter:new(splitterProxy)
         local randNum = math.ceil(math.random(0, overflowNum))
         local returnString = false
 
-        if not itemInput then itemInput = {name = "forceOverlow"} end
+        if not itemInput then itemInput = {name = "forceOverlow", max = 1} end
 
         for i = 1, overflowNum do
             ---@type splitterPort
