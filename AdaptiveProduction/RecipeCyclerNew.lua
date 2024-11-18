@@ -464,4 +464,4 @@ end
 local test = recipeCycler:new()
 test:initBuildables("Biomass")
 test:configMachines({"Biomass"}, {"Alien"})
-test:main(100, 1)
+test:main(100, 0.04)
