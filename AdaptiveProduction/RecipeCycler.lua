@@ -61,7 +61,7 @@ function splitterPort:new(splitter, direction)
         connector = {},
         splitter = splitter,
         isOverflow = true,
-        direction = direction%3, --- due to FIN bug
+        direction = direction % 3, --- due to FIN bug
         machine = {},
         fedAmount = 0}
 
@@ -462,6 +462,6 @@ function recipeCycler:new()
 end
 
 local test = recipeCycler:new()
-test:initBuildables("Biomass")
-test:configMachines({"Biomass"}, {"Alien"})
-test:main(100, 0.04)
+test:initBuildables("Biomass") -- initiate builables (contructor, codeableSplitter) with nuck
+test:configMachines({"Biomass"}, {"Alien"}) -- getting recipes; string to included and string to excluded
+test:main(100, 0.04) -- setting how mnay stacks to feed and deltaTime
